@@ -56,24 +56,17 @@ ylabel('Probability')
 % Now need to develop function to get probability
 % equation for P(Z|X)
 % beam range finder model
-sigma = pd.sigma;
-mu = pd.mu;
-zmax = 100; %max range is 100 [m]
+sigma_hit = pd.sigma;   %Variance
+mu_hit = pd.mu;         %Expected value
+zt_star = mu_hit;
+zt = N90.Range_m_;
+zmax_range = 100; %max range is 100 [m]
 
-
-    
-function p = prob_z_x(z_meas, z_true)
-
-    %Precompute all of the pdfs
-    for i = 1:length(N90.Range_m_)
-        bigN(i) = (1/(sqrt(2*pi*sigma^2)))*exp(-0.5*(N90.Range_m_(i)-mu)^2/sigma^2);
-    end
-    normalizer = sum(bigN);
-    normalizer = normalizer^-1;
-    bigN =(1/(sqrt(2*pi*sigma^2)))*exp(-0.5*(zmeas-mu).^2/sigma^2);
-    pzgivenx = normalizer*bigN;
-    
-end
+%See phit function
+%% or try learn intrinsic parameters
+%Need to initialize lambda_short to 0.0001;
+lambda_short = 0.0001;
+Theta = learn_intrinsic_parameters(zt, zt_star, sigma_hit, lambda_short, zmax_range); 
 
 %% 5 Transform and Plot the GPS measurements
 %use Azimuth=0 file
@@ -98,9 +91,9 @@ xlabel('X [m]')
 ylabel('Y [m]')
 xlim([-200 200])
 ylim([-200 200])
-%Notice that there is muchmore variance in the X data
+%From the graph, notice that there is muchmore variance in the X data
 
-%Look at covariance
+%Look at covariance to verify this
 covXY = cov(X,Y);
 
 %% Implement Baye's Filter
@@ -108,14 +101,35 @@ covXY = cov(X,Y);
 x1 = [-5.5,0.0];
 x2 = [5.5,0.0]; %x(2,:)
 %And probabilities of each state
-p_x1 = 0.5;
-p_x2 = 0.5;
+px1 = 0.5;
+px2 = 0.5;
 %And a measurement
-z = N90.Range_m_(1);
+ztk = N90.Range_m_(1);
 %Calculate Probability of being in each state using Baye's rule
 % p(x|z) = p(z|x)*p(x)/p(z)
 
 %Will first need p(z).
 %From the notes, we have
 %p(z) = sum( p(z|x=i)*p(x=i)
+
+%Define true distances based on beam casting
+ztk_star1 = 5.5+11; 
+ztk_star2 = 11-5.5;
+%Get Conditional measurement probabilities
+pzx1 = phit(ztk,sigma_hit, ztk_star1,zmax_range);
+pzx2 = phit(ztk,sigma_hit, ztk_star2,zmax_range);
+%Get measurement probability as normalizer
+pz = sum(pzx1*px1+pzx2*px2);
+%Plug into baye's rule
+px1z = pzx1*px1/pz;
+px2z = pzx2*px2/pz;
+%Note, these do not work, division by 0 results in NaN
+
+%% Testing
+ThetaTest = [1, 0.0, 0.0, 0.0, sigma_hit, lambda_short];
+tq = beam_range_finder_model(ztk,zt_star, zmax_range, ThetaTest ); 
+thit = phit(ztk,sigma_hit, zt_star,zmax_range);
+tshort = pshort(ztk,lambda_short, zt_star);
+tmax = pmax(ztk, zmax_range);
+trand = prand(ztk, zmax_range);
 
