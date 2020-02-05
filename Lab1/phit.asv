@@ -7,7 +7,7 @@ function p = phit(ztk, sigma_hit, ztk_star, zmax) %dont take in xt or m,
         eta = normcdf([0 zmax], ztk_star, sigma_hit); % eq (6.6) 
         eta = (eta(2)-eta(1))^-1;                     %normcdf is integral of pdf over the bounds
         p = N*eta;                                    %cdf is used to normalize probability
-        %When probabilities are small, want to ensure they are nonzero
+        %When probabilities are small
         if p == 0                                     
             p=0.0001;
         end

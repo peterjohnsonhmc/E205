@@ -6,7 +6,8 @@ N90 = readtable('lab1_azimuth_-90.csv');
 P00 = readtable('lab1_azimuth_00.csv');
 P90 = readtable('lab1_azimuth_90.csv');
 %% 2 Histograms
-
+% Histograms of range data
+% Determined bin size to appear the most normal
 figure(1)
 histogram(N90.Range_m_, 'BinWidth', .00375);
 title('Histogram of range for azimuth = -90^{\circ}')
@@ -25,13 +26,6 @@ title('Histogram of range for azimuth = 90^{\circ}')
 xlabel('Range[m]')
 ylabel('Frequency')
 
-% %Scatter plot
-% figure(4)
-% scatter(P90.Range_m_);
-% figure(5)
-% scatter(P00.Range_m_);
-% figure(6)
-% scatter(N90.Range_m_);
 
 %% 4 Create a Model
 %Use beam finder model
@@ -47,8 +41,8 @@ figure(4)
 plot(x,y,'LineWidth',2)
 
 hold on
-%Overlay a nomrlaized histrogram to compare to normal pdf
-histogram(N90.Range_m_, 'BinWidth', .00375, 'Normalization', 'pdf'); %Normalize to have probabilities
+%Overlay a normalized histrogram to compare to normal pdf
+histogram(N90.Range_m_, 'BinWidth', .00375, 'Normalization', 'pdf'); %
 title('Normalized Histogram Fitted with Normal Distribution (azimuth = -90{\circ})')
 xlabel('Range[m]')
 ylabel('Probability')
@@ -58,42 +52,45 @@ ylabel('Probability')
 % beam range finder model
 sigma_hit = pd.sigma;   %Variance
 mu_hit = pd.mu;         %Expected value
-zt_star = mu_hit;
-zt = N90.Range_m_;
-zmax_range = 100; %max range is 100 [m]
+zt_star = mu_hit;       %True value
+zt = N90.Range_m_;      %Measurement
+zmax_range = 100;       %max range is 100 [m] from datasheet
 
-%See phit function
+%See phit function for implementation
+
 %% or try learn intrinsic parameters
 %Need to initialize lambda_short to 0.0001;
-lambda_short = 0.0001;
-Theta = learn_intrinsic_parameters(zt, zt_star, sigma_hit, lambda_short, zmax_range); 
+%lambda_short = 0.0001;     %Need to intialize parameter
+%Theta = learn_intrinsic_parameters(zt, zt_star, sigma_hit, lambda_short, zmax_range); 
 
 %% 5 Transform and Plot the GPS measurements
 %use Azimuth=0 file
-%Origin is average of measurements
-orig_lat = mean(P00.Latitude);
-orig_lon = mean(P00.Longitude);
+%Convert to radians for unit purposes
+lats = deg2rad(P00.Latitude);
+lons = deg2rad(P00.Longitude);
 
-max_lat = max(P00.Latitude);
-min_lat = min(P00.Latitude);
+%Origin is average of measurements
+orig_lat = mean(lats);
+orig_lon = mean(lons);
 
 %Transform to X and Y coordinate grid
 %Use Equirectangular projection
-R_earth = 6.3781*10^6; %[m] (radius of earth)
+R_earth = 6.371*10^6; %[m] (radius of earth)
 
-X = R_earth*(P00.Longitude-orig_lon)*cosd(orig_lat);
-Y = R_earth*(P00.Latitude-orig_lat);
+X = R_earth*(lons-orig_lon)*cos(orig_lat);
+Y = R_earth*(lats-orig_lat);
 
 figure(5)
 scatter(X,Y)
 title('XY Coordinate representation of GPS');
 xlabel('X [m]')
 ylabel('Y [m]')
-xlim([-200 200])
-ylim([-200 200])
-%Notice that there is muchmore variance in the X data
+xlim([-5 5]);
+ylim([-5 5]);
 
-%Look at covariance to veri
+%From the graph, notice that there is muchmore variance in the X data
+
+%Look at covariance to verify this
 covXY = cov(X,Y);
 
 %% Implement Baye's Filter
@@ -119,11 +116,16 @@ ztk_star2 = 11-5.5;
 pzx1 = phit(ztk,sigma_hit, ztk_star1,zmax_range);
 pzx2 = phit(ztk,sigma_hit, ztk_star2,zmax_range);
 %Get measurement probability as normalizer
-pz = sum(pzx1*px1+pzx2*px2);
+%Question about how to calculate pz
+pz = sum(pzx1*px1+pzx2*px2); %So p(z) the normalizer is small
 %Plug into baye's rule
 px1z = pzx1*px1/pz;
 px2z = pzx2*px2/pz;
 %Note, these do not work, division by 0 results in NaN
+%Added something to phit to prevent a value of 0
+%Since there are only two locations where our sensor could be and they are
+%equally unlikely, then it makes sense there is a 50% probability for each
+%location
 
 %% Testing
 ThetaTest = [1, 0.0, 0.0, 0.0, sigma_hit, lambda_short];
