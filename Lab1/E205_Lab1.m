@@ -9,7 +9,7 @@ P90 = readtable('lab1_azimuth_90.csv');
 % Histograms of range data
 % Determined bin size to appear the most normal
 figure(1)
-histogram(N90.Range_m_, 'BinWidth', .00375);
+histogram(N90.Range_m_, 'BinWidth', .001);
 title('Histogram of range for azimuth = -90^{\circ}')
 xlabel('Range[m]')
 ylabel('Frequency')
