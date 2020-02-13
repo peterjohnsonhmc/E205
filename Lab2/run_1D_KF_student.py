@@ -13,6 +13,7 @@ import time
 import sys
 import matplotlib.pyplot as plt
 import numpy as np
+import math
 
 
 def load_data(filename):
@@ -60,8 +61,8 @@ def prediction_step(x_t_prev, sigma_sq_t_prev):
     """
 
     """STUDENT CODE START"""
-    x_bar_t = None
-    sigma_sq_bar_t = None
+    x_bar_t = x_t_prev
+    sigma_sq_bar_t = sigma_sq_t_prev
     """STUDENT CODE END"""
 
     return [x_bar_t, sigma_sq_bar_t]
@@ -82,11 +83,9 @@ def correction_step(x_bar_t, z_t, sigma_sq_bar_t, sigma_sq_z):
     sigma_sq_est_t  -- the filtered variance estimate of time t
     """
 
-    """STUDENT CODE START"""
-    x_est_t = None
-    sigma_sq_est_t = None
-
-    """STUDENT CODE END"""
+    Kt = sigma_sq_bar_t/(sigma_sq_bar_t+sigma_sq_z)
+    sigma_sq_est_t = sigma_sq_bar_t - Kt*sigma_sq_bar_t
+    x_est_t = x_bar_t + Kt*(z_t-x_bar_t)
 
     return [x_est_t, sigma_sq_est_t]
 
@@ -127,17 +126,19 @@ def plot_yaw(yaw_dict, time_stamps, title=None, xlim=None, ylim=None):
 def main():
     """Run a 1D Kalman Filter on logged yaw data from a BNO055 IMU."""
 
-    filepath = "./"
-    filename = "2020-02-08_08;34;45.csv"
-    yaw_data = load_data(filepath + filename)
+    #filepath = ".\"
+    filename = "2020-02-08_08_52_01.csv"
+    #yaw_data = load_data(filepath + filename)
+    yaw_data = load_data(filename)
 
     """STUDENT CODE START"""
-    SENSOR_MODEL_VARIANCE = None
+    SENSOR_MODEL_VARIANCE = 1.9273
     """STUDENT CODE END"""
 
     #  Initialize filter
     yaw_est_t_prev = yaw_data[0]
     var_t_prev = SENSOR_MODEL_VARIANCE
+    yaw_dict= {}
     yaw_dict["measurements"] = yaw_data
     yaw_dict["estimates"] = []
     yaw_dict["plus_2_stddev"] = []
@@ -161,9 +162,16 @@ def main():
                                                var_z)
 
         #  Format the printouts
-        sys.stdout.write("Yaw State Estimate: {0}\n\
-                         \rYaw Raw Data:       {1}\
-                         \033[A\r".format(yaw_est_t, yaw_meas))
+        #sys.stdout.write("Yaw State Estimate: {0}\n\
+        #                 \r Yaw Raw Data:       {1}\
+        #                 \033[A\r".format(yaw_est_t, yaw_meas))
+        #sys.stdout.flush()
+
+        sys.stdout.write("\r Yaw State Estimate: %f    Yaw Measured: %f \n" % (yaw_est_t,yaw_meas))
+        sys.stdout.flush()
+
+
+        sys.stdout.write("Estimated variance: {0}\n\r".format(var_est_t))
         sys.stdout.flush()
 
         #  Pause the printouts to simulate the real data rate
@@ -178,8 +186,8 @@ def main():
         var_est_t_prev = var_est_t
 
         # Pack data away into yaw dictionary for plotting purpose
-        plus_2_stddev = wrap_to_360(yaw_est_t + 2*sqrt(var_est_t))
-        minus_2_stddev = wrap_to_360(yaw_est_t - 2*sqrt(var_est_t))
+        plus_2_stddev = wrap_to_360(yaw_est_t + 2*math.sqrt(var_est_t))
+        minus_2_stddev = wrap_to_360(yaw_est_t - 2*math.sqrt(var_est_t))
 
         yaw_dict["estimates"].append(yaw_est_t)
         yaw_dict["plus_2_stddev"].append(plus_2_stddev)
@@ -196,8 +204,8 @@ def main():
     plot_yaw(yaw_dict,
              time_stamps,
              title="Zoomed",
-             xlim=[8, 12],
-             ylim=[280, 360])
+             xlim=[14, 24],
+             ylim=[280, 345])
     plt.show()
 
     print("Exiting...")
