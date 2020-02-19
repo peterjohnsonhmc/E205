@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import math
 from scipy.stats import norm
+import scipy.stats
 
 #Global Variables
 #Probability density parameters
@@ -77,6 +78,35 @@ def load_data(filename):
 
     return data
 
+def sensor_model_hist(data, car_num, dt):
+    """Create a probability density function based on histogram
+    """
+    speed = []
+
+    for i in range(len(car_num)):
+        sname = "S_" + str(car_num[i])
+        speed_dat = data[sname]
+        for j in range(len(data[sname])):
+            if (speed_dat[j] < 1.0):
+                speed.append(speed_dat[j])
+    numbins = int(len(speed)/3)
+    hist = np.histogram(speed, bins=numbins, density=True)
+    hist_dist = scipy.stats.rv_histogram(hist)
+    #Can then call .pdf and .df on this type of object
+
+    plt.hist(speed, bins=numbins, density=1)
+    xmin, xmax = plt.xlim()
+    x = np.linspace(xmin, xmax, len(speed))
+    p = hist_dist.pdf(x)
+    
+    plt.plot(x, p, 'k', linewidth=2)
+    plt.title("Normalized Speed Histogram overlaid with PDF")
+    plt.xlabel("Speed (m/s)")
+    plt.ylabel("Frequency (%)")
+
+    
+    return hist_dist
+
 def sensor_model(data, car_num, dt):
     """ Uses car data to create a histogram of vehicle
         speed and then create a pdf
@@ -138,6 +168,7 @@ def bayes_filter(speeds):
     #Initialize beliefs for each state
     b_x_tp_S = 0.5
     b_x_tp_M = 0.5
+    #Call bayes filter for each time step
 
 
 
@@ -146,6 +177,8 @@ def main():
 
     filename = "E205_Lab2_NuScenesData.csv"
     data = load_data(filename)
+
+
     
 
     #Use car 4 data to develop conditional stopped probabilities
@@ -154,19 +187,29 @@ def main():
     [STOP_MU,STOP_STD] = sensor_model(data, [4], dt)
     plt.show()
 
+    #Fit histogram distribution
+    plt.figure(2)
+    stop_hist_dist = sensor_model_hist(data, [4], dt)
+    plt.show()
+
     #Use car 2,3,5 data for moving probability
     # p(s_i|x_i = moving)
     plt.figure(2)
     [MOVE_MU,MOVE_STD] = sensor_model(data, [2,3,5], dt)
     plt.show()
 
+    #Fit histogram distribution
+    plt.figure(4)
+    move_hist_dist = sensor_model_hist(data, [2,3,5], dt)
+    plt.show()
+
     #bayes filter for each car
-    for i in range(1,6):
-        sname = "S_" + str(car_num[i])
-        speeds = data[sname]
-        plt.figure(3+i)
-        bayes_filter(speeds)
-        plt.show()
+    #for i in range(1,6):
+    #    sname = "S_" + str(car_num[i])
+    #    speeds = data[sname]
+    #    plt.figure(3+i)
+    #    bayes_filter(speeds)
+    #    plt.show()
 
     #In the overall scheme of things, need to include
 
