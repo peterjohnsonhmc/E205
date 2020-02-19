@@ -13,7 +13,7 @@ import sys
 import matplotlib.pyplot as plt
 import numpy as np
 import math
-from scipy.stats import norm
+from scipy.stats import norm, halfnorm
 import scipy.stats
 
 #Global Variables
@@ -29,6 +29,10 @@ pS_S = 0.6
 pS_M = 0.25
 pM_S = 0.4
 pM_M = 0.75
+
+#Offsets for first time index for each car
+#Starts with car 1, goes up to 6
+time_offsets = [0, 1, 5, 12, 4, 17]
 
 #Time step for nuscene data
 dt = 0.5
@@ -136,11 +140,16 @@ def sensor_model(data, car_num, dt):
 
     return [mu,std]
 
-def p_s_x(s, mu, std):
+def p_s_x_moving(s, mu, std):
     pdf_val = norm(mu, std).pdf(s)
-    cdf_val = norm(mu, std).cdf(s)
-    prob = pdf_val/cdf_val
-    
+    cdf_val = norm(mu, std).cdf(10)
+    prob = pdf_val/cdf_val    
+    return prob
+
+def p_s_x_stopped(s, mu, std):
+    pdf_val = norm(mu, std).pdf(s)
+    cdf_val = norm(mu, std).cdf(10) 
+    prob = pdf_val/cdf_val    
     return prob
 
 def bayes_filter_step(b_x_tp_S, b_x_tp_M, s):
@@ -152,11 +161,11 @@ def bayes_filter_step(b_x_tp_S, b_x_tp_M, s):
     #Prediction Step
     #bel_bar(x=S) = p(S|S)*p(S) + p(S|M)*p(M)
     bb_x_t_S = pS_S*b_x_tp_S + pS_M*b_x_tp_M
-    bb_x_t_M = pM_S*b_x_tp_S + PM_M*b_x_tp_M
+    bb_x_t_M = pM_S*b_x_tp_S + pM_M*b_x_tp_M
 
     #Correction step
-    b_x_t_S = p_s_x(s,STOP_MU, STOP_STD)*bb_x_t_S
-    b_x_t_M = p_s_x(s,MOVE_MU, MOVE_STD)*bb_x_t_M
+    b_x_t_S = p_s_x_stopped(s,STOP_MU, STOP_STD)*bb_x_t_S
+    b_x_t_M = p_s_x_moving(s,MOVE_MU, MOVE_STD)*bb_x_t_M
     #Normalize
     norm = b_x_t_S + b_x_t_M
     b_x_t_S = b_x_t_S/norm
@@ -164,13 +173,16 @@ def bayes_filter_step(b_x_tp_S, b_x_tp_M, s):
 
     return [b_x_t_S, b_x_t_M]
 
-def bayes_filter(speeds):
+def plot_bayes(data, time_offset, times):
     #Initialize beliefs for each state
+    bf = []
     b_x_tp_S = 0.5
     b_x_tp_M = 0.5
-    #Call bayes filter for each time step
+    for i in range(len(data)):
+        [b_x_tp_S, b_x_tp_M] = bayes_filter_step(b_x_tp_S, b_x_tp_M, data[i])
+        bf.append(b_x_tp_S)
 
-
+    plt.plot(times[time_offset:time_offset+len(data)], bf)
 
 def main():
     """Run a 1D Bayes filter on logged movement """
@@ -178,8 +190,13 @@ def main():
     filename = "E205_Lab2_NuScenesData.csv"
     data = load_data(filename)
 
-
+    global STOP_MU
+    global STOP_STD
+    global MOVE_MU
+    global MOVE_STD
     
+    for key in data:
+        print(key)
 
     #Use car 4 data to develop conditional stopped probabilities
     # p(s_i|x_i = stopped)
@@ -203,13 +220,19 @@ def main():
     move_hist_dist = sensor_model_hist(data, [2,3,5], dt)
     plt.show()
 
+    times = data["Time (s)"]
     #bayes filter for each car
-    #for i in range(1,6):
-    #    sname = "S_" + str(car_num[i])
-    #    speeds = data[sname]
-    #    plt.figure(3+i)
-    #    bayes_filter(speeds)
-    #    plt.show()
+    for i in range(1,7):
+        print(i)
+        sname = "S_" + str(i)
+        speeds = data[sname]
+        if (i == 4):
+            print(speeds)
+        plt.figure(4+i)
+        plot_bayes(speeds, time_offsets[i-1], times)
+        plt.title(sname)
+        plt.show()
+
 
     #In the overall scheme of things, need to include
 
