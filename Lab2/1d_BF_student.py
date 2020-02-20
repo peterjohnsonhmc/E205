@@ -13,7 +13,7 @@ import sys
 import matplotlib.pyplot as plt
 import numpy as np
 import math
-from scipy.stats import norm, halfnorm
+from scipy.stats import norm, halfnorm, uniform
 import scipy.stats
 
 #Global Variables
@@ -23,7 +23,7 @@ STOP_STD = 0
 MOVE_MU = 0
 MOVE_STD = 0
 
-#Conditional Probabilities 
+#Conditional Probabilities
 #p(X_t = Stopped | x_t_p = Stopped)
 pS_S = 0.6
 pS_M = 0.25
@@ -60,15 +60,20 @@ def load_data(filename):
 
     for row in file_reader:
         for h, element in zip(header, row):
-            if element in (None,""): 
+            if element in (None,""):
                 continue
             else:
                 data[h].append(float(element))
-
     f.close()
 
-    #Add Speed data to the Dictionary
-    for j in range(1,6):    #Loop through i=1 to i=5
+    # Fixing a glitch in importing the time header
+    for key in data:
+        if "Time" in key:
+            data["Time"] = data.pop(key)
+            break
+
+    # Add Speed data to the Dictionary
+    for j in range(1,7):    #Loop through i=1 to i=6
         x = []
         y = []
         xname = "X_" + str(j)
@@ -82,8 +87,9 @@ def load_data(filename):
 
     return data
 
-def sensor_model_hist(data, car_num, dt):
-    """Create a probability density function based on histogram
+def hist_plotter(data, car_num, dt):
+    """Takes in speed data and list of car numbers, and makes a histogram
+        of all their speeds
     """
     speed = []
 
@@ -91,31 +97,17 @@ def sensor_model_hist(data, car_num, dt):
         sname = "S_" + str(car_num[i])
         speed_dat = data[sname]
         for j in range(len(data[sname])):
-            if (speed_dat[j] < 1.0):
-                speed.append(speed_dat[j])
+            speed.append(speed_dat[j])
+
     numbins = int(len(speed)/3)
-    hist = np.histogram(speed, bins=numbins, density=True)
-    hist_dist = scipy.stats.rv_histogram(hist)
-    #Can then call .pdf and .df on this type of object
-
-    plt.hist(speed, bins=numbins, density=1)
-    xmin, xmax = plt.xlim()
-    x = np.linspace(xmin, xmax, len(speed))
-    p = hist_dist.pdf(x)
-    
-    plt.plot(x, p, 'k', linewidth=2)
-    plt.title("Normalized Speed Histogram overlaid with PDF")
+    plt.hist(speed, bins=numbins)
     plt.xlabel("Speed (m/s)")
-    plt.ylabel("Frequency (%)")
+    plt.ylabel("Frequency")
 
-    
-    return hist_dist
 
-def sensor_model(data, car_num, dt):
+def sensor_model_stopped(data, car_num, dt):
     """ Uses car data to create a histogram of vehicle
-        speed and then create a pdf
-        Calculate speed using distance from euclidean change in position
-        returns the average and standard devation for gaussian fit of data
+        speed and then creates a pdf for a stopped car
     """
     speed = []
 
@@ -123,33 +115,93 @@ def sensor_model(data, car_num, dt):
         sname = "S_" + str(car_num[i])
         speed_dat = data[sname]
         for j in range(len(data[sname])):
-            if (speed_dat[j] < 1.0):
-                speed.append(speed_dat[j])
+            speed.append(speed_dat[j])
 
+    # Plot histogram
+    numbins = int(len(speed)/2)
+    plt.hist(speed, bins=numbins)
+
+    # Fit speeds with a normal distribution
     mu, std = norm.fit(speed)
-    numbins = int(len(speed)/3)
-    plt.hist(speed, bins=numbins, density=1)
+
+    # Make piecewise probability distribution function
+    # Uniform distribution between 0 and mu calculated for normal
+    # dist. After that, just a half norm
     xmin, xmax = plt.xlim()
     x = np.linspace(xmin, xmax, len(speed))
-    p = norm.pdf(x, mu, std)
-    
+    p = []
+    for i in range(len(x)):
+        if (x[i] < mu):
+            p.append(norm(mu, std).pdf(mu))
+        else:
+            p.append(norm(mu, std).pdf(x[i]))
+
     plt.plot(x, p, 'k', linewidth=2)
-    plt.title("Normalized Speed Histogram overlaid with Normal Distriubition")
+    plt.xlim(0,.18)
+    plt.title("Speed Histogram for Stopped Car Overlaid with Custom Dist.")
     plt.xlabel("Speed (m/s)")
-    plt.ylabel("Frequency (%)")
+    plt.ylabel("Frequency")
 
     return [mu,std]
 
-def p_s_x_moving(s, mu, std):
-    pdf_val = norm(mu, std).pdf(s)
-    cdf_val = norm(mu, std).cdf(10)
-    prob = pdf_val/cdf_val    
+def sensor_model_moving(data, car_num, dt):
+        """ Uses car data to create a histogram of vehicle
+            speed and then create a pdf
+            Calculate speed using distance from euclidean change in position
+            returns the average and standard devation for gaussian fit of data
+        """
+        speed = []
+
+        for i in range(len(car_num)):
+            sname = "S_" + str(car_num[i])
+            speed_dat = data[sname]
+            for j in range(len(data[sname])):
+                speed.append(speed_dat[j])
+
+        # Plot histogram
+        numbins = int(len(speed)/0.3)
+        plt.hist(speed, bins=numbins, range=(0,12))
+
+        # Fit speeds with a normal distribution
+        mu, std = norm.fit(speed)
+
+        xmin, xmax = plt.xlim()
+        x = np.linspace(xmin, xmax, 5*len(speed))
+        p = norm.pdf(x, mu, std)
+
+        plt.plot(x, p, 'k', linewidth=2)
+        plt.title("Speed Histogram for Moving Car Overlaid with Normal Dist.")
+        plt.xlabel("Speed (m/s)")
+        plt.ylabel("Frequency")
+        return [mu,std]
+
+def p_moving_s(s):
+    """ Takes in car speed, returns p(s|moving), which is the probability
+        that speed measurement is s if the car is moving
+    """
+    pdf_val = norm(MOVE_MU, MOVE_STD).pdf(s)
+    # cdf integrates over pdf. Put in a high value of 10 to get whole range,
+    # then subtract the region less than 0 because those speeds are impossible
+    cdf_val = halfnorm(MOVE_MU, MOVE_STD).cdf(10)-norm(MOVE_MU, MOVE_STD).cdf(0) # normalize with cdf
+    prob = pdf_val/cdf_val
     return prob
 
-def p_s_x_stopped(s, mu, std):
-    pdf_val = norm(mu, std).pdf(s)
-    cdf_val = norm(mu, std).cdf(10) 
-    prob = pdf_val/cdf_val    
+def p_stopped_s(s):
+    """ Takes in car speed, returns p(s|stopped), which is the probability
+        that speed measurement is s if the car is stopped
+    """
+    # Make piecewise probability distribution function
+    # Uniform distribution between 0 and mu calculated for normal
+    # dist. After that, just a half norm
+    if (s < STOP_MU):
+        pdf_val = norm(STOP_MU, STOP_STD).pdf(STOP_MU)
+    else:
+        pdf_val = norm(STOP_MU, STOP_STD).pdf(s)
+
+    # cdf integrates over pdf. Put in a high value of 10 to get whole range,
+    # then subtract the region less than mu and add in the uniform region
+    cdf_val = norm(STOP_MU, STOP_STD).cdf(10) + STOP_MU*norm(STOP_MU, STOP_STD).pdf(STOP_MU) - norm(STOP_MU, STOP_STD).cdf(STOP_MU)
+    prob = pdf_val/cdf_val # normalize with cdf
     return prob
 
 def bayes_filter_step(b_x_tp_S, b_x_tp_M, s):
@@ -164,8 +216,9 @@ def bayes_filter_step(b_x_tp_S, b_x_tp_M, s):
     bb_x_t_M = pM_S*b_x_tp_S + pM_M*b_x_tp_M
 
     #Correction step
-    b_x_t_S = p_s_x_stopped(s,STOP_MU, STOP_STD)*bb_x_t_S
-    b_x_t_M = p_s_x_moving(s,MOVE_MU, MOVE_STD)*bb_x_t_M
+    b_x_t_S = p_stopped_s(s)*bb_x_t_S
+    b_x_t_M = p_moving_s(s)*bb_x_t_M
+
     #Normalize
     norm = b_x_t_S + b_x_t_M
     b_x_t_S = b_x_t_S/norm
@@ -174,11 +227,16 @@ def bayes_filter_step(b_x_tp_S, b_x_tp_M, s):
     return [b_x_t_S, b_x_t_M]
 
 def plot_bayes(data, time_offset, times):
+    """ Plots the Bayes filter prediction for a given car's data
+        vs. time
+    """
+
     #Initialize beliefs for each state
     bf = []
     b_x_tp_S = 0.5
     b_x_tp_M = 0.5
     for i in range(len(data)):
+        # Repeatedly calls Bayes filter step, then plots vs. time
         [b_x_tp_S, b_x_tp_M] = bayes_filter_step(b_x_tp_S, b_x_tp_M, data[i])
         bf.append(b_x_tp_S)
 
@@ -190,53 +248,58 @@ def main():
     filename = "E205_Lab2_NuScenesData.csv"
     data = load_data(filename)
 
+    # global variables
     global STOP_MU
     global STOP_STD
     global MOVE_MU
     global MOVE_STD
-    
-    for key in data:
-        print(key)
 
-    #Use car 4 data to develop conditional stopped probabilities
+    # Use car 4 data to develop conditional stopped probabilities
     # p(s_i|x_i = stopped)
     plt.figure(1)
-    [STOP_MU,STOP_STD] = sensor_model(data, [4], dt)
+    [STOP_MU,STOP_STD] = sensor_model_stopped(data, [4], dt)
     plt.show()
 
-    #Fit histogram distribution
-    plt.figure(2)
-    stop_hist_dist = sensor_model_hist(data, [4], dt)
-    plt.show()
-
-    #Use car 2,3,5 data for moving probability
+    # Use car 1 to develop our model for a moving car
     # p(s_i|x_i = moving)
     plt.figure(2)
-    [MOVE_MU,MOVE_STD] = sensor_model(data, [2,3,5], dt)
+    [MOVE_MU,MOVE_STD] = sensor_model_moving(data, [1], dt)
     plt.show()
 
-    #Fit histogram distribution
+    # Make histogram for cars 2, 3, 5
     plt.figure(4)
-    move_hist_dist = sensor_model_hist(data, [2,3,5], dt)
+    hist_plotter(data, [2,3,5], dt)
+    plt.title("Speed Histogram for Cars 2, 3, and 5")
     plt.show()
 
-    times = data["Time (s)"]
-    #bayes filter for each car
-    for i in range(1,7):
-        print(i)
+    # Plot stopped probability for each car vs. time
+    plt.figure(5)
+    times = data["Time"]
+    
+    for i in range(1,4):
         sname = "S_" + str(i)
         speeds = data[sname]
-        if (i == 4):
-            print(speeds)
-        plt.figure(4+i)
+        plt.subplot(3, 1, i)
+        plt.ylim(-.1,1.1)
+        plt.xlim(-1,20)
+        plt.title("Car " + str(i))
+        plt.xlabel("Time (s)")
+        plt.ylabel("p(stopped)")
         plot_bayes(speeds, time_offsets[i-1], times)
-        plt.title(sname)
-        plt.show()
+    plt.show()
 
-
-    #In the overall scheme of things, need to include
-
-
+    plt.figure(6)
+    for i in range(4,7):
+        sname = "S_" + str(i)
+        speeds = data[sname]
+        plt.subplot(3, 1, i-3)
+        plt.ylim(-.1,1.1)
+        plt.xlim(-1,20)
+        plt.title("Car " + str(i))
+        plt.xlabel("Time (s)")
+        plt.ylabel("p(stopped)")
+        plot_bayes(speeds, time_offsets[i-1], times)
+    plt.show()
 
     print("Exiting...")
 

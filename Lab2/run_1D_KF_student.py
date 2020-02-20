@@ -59,11 +59,9 @@ def prediction_step(x_t_prev, sigma_sq_t_prev):
     x_bar_t         -- the predicted state estimate of time t
     sigma_sq_bar_t  -- the predicted variance estimate of time t
     """
-
-    """STUDENT CODE START"""
+    
     x_bar_t = x_t_prev
     sigma_sq_bar_t = sigma_sq_t_prev
-    """STUDENT CODE END"""
 
     return [x_bar_t, sigma_sq_bar_t]
 
@@ -161,15 +159,8 @@ def main():
                                                var_pred_t,
                                                var_z)
 
-        #  Format the printouts
-        #sys.stdout.write("Yaw State Estimate: {0}\n\
-        #                 \r Yaw Raw Data:       {1}\
-        #                 \033[A\r".format(yaw_est_t, yaw_meas))
-        #sys.stdout.flush()
-
         sys.stdout.write("\r Yaw State Estimate: %f    Yaw Measured: %f \n" % (yaw_est_t,yaw_meas))
         sys.stdout.flush()
-
 
         sys.stdout.write("Estimated variance: {0}\n\r".format(var_est_t))
         sys.stdout.flush()
@@ -177,9 +168,6 @@ def main():
         #  Pause the printouts to simulate the real data rate
         dt = 1/13.  # seconds
         time_stamps.append(dt*t)
-
-        #  Comment out sleep to visualize the plot immediately
-        # time.sleep(dt)
 
         #  For clarity sake/teaching purposes, we explicitly update t->(t-1)
         yaw_est_t_prev = yaw_est_t
