@@ -1,9 +1,7 @@
 """
 Author: Peter Johnson and Pinky King
 Email: pjohnson@g.hmc.edu, pking@g.hmc.edu
-Based on code by
-Author: Andrew Q. Pham
-Email: apham@g.hmc.edu
+Based on code by Andrew Q. Pham apham@g.hmc.edu
 Date of Creation: 2/26/20
 Description:
     Extended Kalman Filter implementation to filtering localization estimate
@@ -21,9 +19,9 @@ import os.path
 
 HEIGHT_THRESHOLD = 0.0  # meters
 GROUND_HEIGHT_THRESHOLD = -.4  # meters
-DT = 0.1
-X_LANDMARK = 5.  # meters (in global frame)
-Y_LANDMARK = -5.  # meters
+dt = 0.1
+X_L = 5.  # Landmark position in global frame
+Y_L = -5.  # meters
 EARTH_RADIUS = 6.3781E6  # meters
 
 
@@ -158,6 +156,7 @@ def wrap_to_pi(angle):
 
 def propogate_state(x_t_prev, u_t):
     """Propogate/predict the state based on chosen motion model
+        Use the nonlinear function g
 
     Parameters:
     x_t_prev (np.array)  -- the previous state estimate
@@ -166,10 +165,17 @@ def propogate_state(x_t_prev, u_t):
     Returns:
     x_bar_t (np.array)   -- the predicted state
     """
-    """STUDENT CODE START"""
+    [xd x yd y thetad theta thetap] = x_t_prev
+    [ux uy] = u_t
 
-    x_bar_t = np.array([])
-    """STUDENT CODE END"""
+    x_bar_t = np.matrix([xd + (-uy*sin(theta)+ux*cos(theta))*dt]\
+                        [x + xd*dt + 1/2*(-uy*sin(theta)+ux*cos(theta))*dt^2]\
+                        [yd + (uy*cos(theta) + ux*sin(theta))*dt]\
+                        [y + yd*dt + 1/2*(uy*cos(theta)+ ux*sin(theta))*dt^2]\
+                        [(theta - thetap)/dt]\
+                        [v_theta*dt]\
+                        [theta])
+    
 
     return x_bar_t
 
@@ -186,6 +192,7 @@ def calc_prop_jacobian_x(x_t_prev, u_t):
     """
     [xd x yd y thetad theta thetap] = x_t_prev
     [ux uy] = u_t
+
     G_x_t = np.matrix([  1, 0,  0, 0,  0, -dt*(uy*math.cos(theta) + ux*math.sin(theta)),               0] \
                       [ dt, 1,  0, 0,  0, -dt^2*((uy*math.cos(theta))/2 + (ux*math.sin(theta))/2),     0] \
                       [  0, 0,  1, 0,  0,  dt*(ux*math.cos(theta) - uy*math.sin(theta)),               0] \
@@ -197,7 +204,7 @@ def calc_prop_jacobian_x(x_t_prev, u_t):
 
 
 def calc_prop_jacobian_u(x_t_prev, u_t):
-    """Calculate the Jacobian of motion model with respect to control input
+    """Calculate the Jacobian of motion model (g) with respect to control input (u)
 
     Parameters:
     x_t_prev (np.array)     -- the previous state estimate
@@ -235,19 +242,26 @@ def prediction_step(x_t_prev, u_t, sigma_x_t_prev):
     sigma_x_bar_t (np.array)    -- the predicted variance estimate of time t
     """
 
-    """STUDENT CODE START"""
     # Covariance matrix of control input
-    sigma_u_t = np.zeros((,))  # add shape of matrix
+    #NEED TO UPDATE
+    #Use something besides zeros
+    #variance for ddx ddy 
+    R_t = np.matrix([1,0] \
+                    [0,1])
 
-    x_bar_t =
-    sigma_x_bar_t =
-    """STUDENT CODE END"""
+    # Jacobians
+    G_x_t = calc_prop_jacobian_x(x_t_prev, u_t)
+    G_u_t = calc_prop_jacobian_u(x_t_prev, u_t)
+
+    x_bar_t = propogate_state(x_t_prev, u_t)
+    sigma_x_bar_t = G_x_t*sigma_x_t_prev*np.transpose(G_x_t) + G_u_t*R_t*np.transpose(G_u_t)
+    
 
     return [x_bar_t, sigma_x_bar_t]
 
 
 def calc_meas_jacobian(x_bar_t):
-    """Calculate the Jacobian of your measurment model with respect to state
+    """Calculate the Jacobian of your measurment model (h) with respect to state
 
     Parameters:
     x_bar_t (np.array)  -- the predicted state
@@ -256,8 +270,9 @@ def calc_meas_jacobian(x_bar_t):
     H_t (np.array)      -- Jacobian of measurment model
     """
     [xd x yd y thetad theta thetap] = x_t_prev
+
     H_t = np.matrix([ 0, -1/math.cos(theta), 0,  0,                 0, (math.sin(theta)*(X_L - x))/math.cos(theta)^2,  0] \
-                    [ 0,  0,                 0, -1/math.cos(theta), 0, (math.sin(theta)*(Y_L - yp))/math.cos(theta)^2, 0] \
+                    [ 0,  0,                 0, -1/math.cos(theta), 0, (math.sin(theta)*(Y_L - y))/math.cos(theta)^2,  0] \
                     [ 0,  0,                 0,  0,                 0,  1,                                             0])
 
     return H_t
@@ -273,19 +288,24 @@ def calc_kalman_gain(sigma_x_bar_t, H_t):
     Returns:
     K_t (np.array)            -- Kalman Gain
     """
-    """STUDENT CODE START"""
+   
     # Covariance matrix of measurments
-    sigma_z_t = np.empty((, ))
+    #NEED TO UPDATE
+    #Use real values
+    #x_l, y_l, theta
+    Q_t = np.matrix([1,0,0] \
+                    [0,1,0] \
+                    [0,0,1])
 
-    K_t =
-    """STUDENT CODE END"""
+    H_t_T = np.transpose(H_t)
+    K_t = sigma_x_bar_t*H_t_T*(np.linalg.inv(H_t*sigma_x_bar_t*H_t_t + Q_t))
 
     return K_t
 
 
 def calc_meas_prediction(x_bar_t):
     """Calculate predicted measurement based on the predicted state
-
+        Implements the nonlinear measrument h function
     Parameters:
     x_bar_t (np.array)  -- the predicted state
 
@@ -293,9 +313,11 @@ def calc_meas_prediction(x_bar_t):
     z_bar_t (np.array)  -- the predicted measurement
     """
 
-    """STUDENT CODE START"""
-    z_bar_t = np.array([, ])
-    """STUDENT CODE END"""
+    [xd x yd y thetad theta thetap] = x_bar_t
+
+    z_bar_t = np.array([(X_L- x)*sec(theta)]\
+                       [(Y_L - y)*sec(theta)]\
+                       [theta])
 
     return z_bar_t
 
@@ -313,10 +335,13 @@ def correction_step(x_bar_t, z_t, sigma_x_bar_t):
     sigma_x_est_t (np.array)    -- the filtered variance estimate of time t
     """
 
-    """STUDENT CODE START"""
-    x_est_t =
-    sigma_x_est_t =
-    """STUDENT CODE END"""
+
+    H_t = calc_meas_jacobian(x_bar_t)
+    K_t = calc_kalman_gain(sigma_x_bar_t, H_t)
+
+    x_est_t = x_bar_t + K_t*(z_t-calc_meas_prediction(x_bar_t))
+    
+    sigma_x_est_t = (np.eye(7, dtype=float)-K_t*H_t)*sigma_x_bar_t
 
     return [x_est_t, sigma_x_est_t]
 
@@ -351,8 +376,9 @@ def main():
 
     #  Initialize filter
     """STUDENT CODE START"""
-    N =  # number of states
-    state_est_t_prev = np.array([, ])
+    N = 7 # number of states
+    #Start in NW corner
+    state_est_t_prev = np.array([0,0,0,0,0,0,0])
     var_t_prev = np.identity(N)
 
     state_estimates = np.empty((N, len(time_stamps)))
@@ -363,17 +389,16 @@ def main():
     #  Run filter over data
     for t, _ in enumerate(time_stamps):
         # Get control input
-        """STUDENT CODE START"""
-        u_t = np.array([, ])
-        """STUDENT CODE END"""
+        
+        u_t = np.array([x_ddot, y_ddot])
+        
 
         # Prediction Step
         state_pred_t, var_pred_t = prediction_step(state_est_t_prev, u_t, var_t_prev)
 
         # Get measurement
-        """STUDENT CODE START"""
-        z_t = np.array([, ])
-        """STUDENT CODE END"""
+        z_t = np.array([x_lidar, y_lidar, yaw_lidar])
+
 
         # Correction Step
         state_est_t, var_est_t = correction_step(state_pred_t,
@@ -394,9 +419,25 @@ def main():
                                          lon_origin=lon_origin)
         gps_estimates[:, t] = np.array([x_gps, y_gps])
 
-    """STUDENT CODE START"""
+
     # Plot or print results here
-    """STUDENT CODE END"""
+    print("\n\nDone filtering...plotting...")
+
+    # Plot raw data and estimate
+    plt.figure(1)
+    plt.suptitle("EKF Localization: X & Y Measurements")
+    plt.subplot(1, 2, 1)
+    plot_yaw(ya, time_stamps, title="Full Log")
+    plt.subplot(1, 2, 2)
+    plot_yaw(yaw_dict,
+             time_stamps,
+             title="Zoomed",
+             xlim=[14, 24],
+             ylim=[280, 345])
+    plt.show()
+
+    print("Exiting...")
+ 
     return 0
 
 
