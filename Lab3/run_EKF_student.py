@@ -133,7 +133,7 @@ def convert_gps_to_xy(lat_gps, lon_gps, lat_origin, lon_origin):
     x_gps (float)          -- the converted x coordinate
     y_gps (float)          -- the converted y coordinate
     """
-    x_gps = EARTH_RADIUS*(math.pi/180.)*(lon_gps - lon_origin)*math.cos((math.pi/180.)*lat_origin)
+    x_gps = EARTH_RADIUS*(math.pi/180.)*(lon_gps - lon_origin)*math.math.cos((math.pi/180.)*lat_origin)
     y_gps = EARTH_RADIUS*(math.pi/180.)*(lat_gps - lat_origin)
 
     return x_gps, y_gps
@@ -184,9 +184,14 @@ def calc_prop_jacobian_x(x_t_prev, u_t):
     Returns:
     G_x_t (np.array)    -- Jacobian of motion model wrt to x
     """
-    """STUDENT CODE START"""
-    G_x_t = np.empty((, ))  # add shape of matrix
-    """STUDENT CODE END"""
+    [xd x yd y thetad theta thetap] = x_t_prev
+    [ux uy] = u_t
+    G_x_t = np.matrix([  1, 0,  0, 0,  0, -dt*(uy*math.cos(theta) + ux*math.sin(theta)),               0] \
+                      [ dt, 1,  0, 0,  0, -dt^2*((uy*math.cos(theta))/2 + (ux*math.sin(theta))/2),     0] \
+                      [  0, 0,  1, 0,  0,  dt*(ux*math.cos(theta) - uy*math.sin(theta)),               0] \
+                      [  0, 0, dt, 1,  0,  dt^2*((ux*math.cos(theta))/2 - (uy*math.sin(theta))/2),     0] \
+                      [  0, 0,  0, 0,  0,  1/dt,                                                   -1/dt] \
+                      [  0, 0,  0, 0, dt,  0,                                                          0])  # add shape of matrix
 
     return G_x_t
 
@@ -196,15 +201,23 @@ def calc_prop_jacobian_u(x_t_prev, u_t):
 
     Parameters:
     x_t_prev (np.array)     -- the previous state estimate
+        in order: x' x  y' y theta' theta theta_prev
     u_t (np.array)          -- the current control input (really is odometry)
 
     Returns:
     G_u_t (np.array)        -- Jacobian of motion model wrt to u
     """
 
-    """STUDENT CODE START"""
-    G_u_t = np.zeros((, ))  # add shape of matrix
-    """STUDENT CODE END"""
+    [xd x yd y thetad theta thetap] = x_t_prev
+    [ux uy] = u_t
+
+    G_u_t = np.matrix([ dt*math.cos(theta),             -dt*math.sin(theta)] \
+                      [ (dt^2*math.cos(theta))/2, -(dt^2*math.sin(theta))/2] \
+                      [ dt*math.sin(theta),              dt*math.cos(theta)] \
+                      [ (dt^2*sin(theta))/2,       (dt^2*math.cos(theta))/2] \
+                      [ 0,                                                0] \
+                      [ 0,                                                0] \
+                      [ 0,                                                0])  # add shape of matrix
 
     return G_u_t
 
@@ -242,9 +255,10 @@ def calc_meas_jacobian(x_bar_t):
     Returns:
     H_t (np.array)      -- Jacobian of measurment model
     """
-    """STUDENT CODE START"""
-    H_t = np.zeros((, ))
-    """STUDENT CODE END"""
+    [xd x yd y thetad theta thetap] = x_t_prev
+    H_t = np.matrix([ 0, -1/math.cos(theta), 0,  0,                 0, (math.sin(theta)*(X_L - x))/math.cos(theta)^2,  0] \
+                    [ 0,  0,                 0, -1/math.cos(theta), 0, (math.sin(theta)*(Y_L - yp))/math.cos(theta)^2, 0] \
+                    [ 0,  0,                 0,  0,                 0,  1,                                             0])
 
     return H_t
 
