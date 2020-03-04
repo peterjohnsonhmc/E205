@@ -131,7 +131,7 @@ def convert_gps_to_xy(lat_gps, lon_gps, lat_origin, lon_origin):
     x_gps (float)          -- the converted x coordinate
     y_gps (float)          -- the converted y coordinate
     """
-    x_gps = EARTH_RADIUS*(math.pi/180.)*(lon_gps - lon_origin)*math.math.cos((math.pi/180.)*lat_origin)
+    x_gps = EARTH_RADIUS*(math.pi/180.)*(lon_gps - lon_origin)*math.cos((math.pi/180.)*lat_origin)
     y_gps = EARTH_RADIUS*(math.pi/180.)*(lat_gps - lat_origin)
 
     return x_gps, y_gps
@@ -165,16 +165,17 @@ def propogate_state(x_t_prev, u_t):
     Returns:
     x_bar_t (np.array)   -- the predicted state
     """
-    [xd x yd y thetad theta thetap] = x_t_prev
-    [ux uy] = u_t
+    #Destructure array
+    xd, x, yd, y, thetad, theta, thetap = x_t_prev
+    ux, uy = u_t
 
-    x_bar_t = np.matrix([xd + (-uy*sin(theta)+ux*cos(theta))*dt]\
-                        [x + xd*dt + 1/2*(-uy*sin(theta)+ux*cos(theta))*dt^2]\
-                        [yd + (uy*cos(theta) + ux*sin(theta))*dt]\
-                        [y + yd*dt + 1/2*(uy*cos(theta)+ ux*sin(theta))*dt^2]\
-                        [(theta - thetap)/dt]\
-                        [v_theta*dt]\
-                        [theta])
+    x_bar_t = np.array([[xd +              (-uy*math.sin(theta) + ux*math.cos(theta))* dt],
+                        [x  + xd*dt + 1/2* (-uy*math.sin(theta) + ux*math.cos(theta))* np.power(dt,2)],
+                        [yd +               (uy*math.cos(theta) + ux*math.sin(theta))* dt],
+                        [y  + yd*dt + 1/2*  (uy*math.cos(theta) + ux*math.sin(theta))* np.power(dt,2)],
+                        [(theta - thetap)/dt],
+                        [thetad*dt],
+                        [theta]], dtype = float)
     
 
     return x_bar_t
@@ -190,15 +191,20 @@ def calc_prop_jacobian_x(x_t_prev, u_t):
     Returns:
     G_x_t (np.array)    -- Jacobian of motion model wrt to x
     """
-    [xd x yd y thetad theta thetap] = x_t_prev
-    [ux uy] = u_t
+    xd, x, yd, y, thetad, theta, thetap = x_t_prev
+    ux, uy = u_t
 
-    G_x_t = np.matrix([  1, 0,  0, 0,  0, -dt*(uy*math.cos(theta) + ux*math.sin(theta)),               0] \
-                      [ dt, 1,  0, 0,  0, -dt^2*((uy*math.cos(theta))/2 + (ux*math.sin(theta))/2),     0] \
-                      [  0, 0,  1, 0,  0,  dt*(ux*math.cos(theta) - uy*math.sin(theta)),               0] \
-                      [  0, 0, dt, 1,  0,  dt^2*((ux*math.cos(theta))/2 - (uy*math.sin(theta))/2),     0] \
-                      [  0, 0,  0, 0,  0,  1/dt,                                                   -1/dt] \
-                      [  0, 0,  0, 0, dt,  0,                                                          0])  # add shape of matrix
+
+    G_x_t = np.array([[  1, 0,  0, 0,  0, -dt*(uy*math.cos(theta) + ux*math.sin(theta)),                         0],
+                      [ dt, 1,  0, 0,  0, -np.power(dt,2)*((uy*math.cos(theta))/2 + (ux*math.sin(theta))/2),     0],
+                      [  0, 0,  1, 0,  0,  dt*(ux*math.cos(theta) - uy*math.sin(theta)),                         0],
+                      [  0, 0, dt, 1,  0,  np.power(dt,2)*((ux*math.cos(theta))/2 - (uy*math.sin(theta))/2),     0],
+                      [  0, 0,  0, 0,  0,  1/dt,                                                             -1/dt],
+                      [  0, 0,  0, 0, dt,  0,                                                                    0],
+                      [  0, 0,  0, 0,  0,  1,                                                                    0]], 
+                      dtype = float)  # add shape of matrix
+
+    #print("G_x_t: ", G_x_t.shape)
 
     return G_x_t
 
@@ -215,17 +221,19 @@ def calc_prop_jacobian_u(x_t_prev, u_t):
     G_u_t (np.array)        -- Jacobian of motion model wrt to u
     """
 
-    [xd x yd y thetad theta thetap] = x_t_prev
-    [ux uy] = u_t
+    xd, x, yd, y, thetad, theta, thetap = x_t_prev
+    ux, uy = u_t
 
-    G_u_t = np.matrix([ dt*math.cos(theta),             -dt*math.sin(theta)] \
-                      [ (dt^2*math.cos(theta))/2, -(dt^2*math.sin(theta))/2] \
-                      [ dt*math.sin(theta),              dt*math.cos(theta)] \
-                      [ (dt^2*sin(theta))/2,       (dt^2*math.cos(theta))/2] \
-                      [ 0,                                                0] \
-                      [ 0,                                                0] \
-                      [ 0,                                                0])  # add shape of matrix
+    G_u_t = np.array([[ dt*math.cos(theta),             -dt*math.sin(theta)],
+                      [ (np.power(dt,2)*math.cos(theta))/2, -(np.power(dt,2)*math.sin(theta))/2],
+                      [ dt*math.sin(theta),              dt*math.cos(theta)],
+                      [ (np.power(dt,2)*math.sin(theta))/2,       (np.power(dt,2)*math.cos(theta))/2],
+                      [ 0,                                                0],
+                      [ 0,                                                0],
+                      [ 0,                                                0]],
+                      dtype = float)  # add shape of matrix
 
+    #print("G_u_t: ", G_u_t.shape)
     return G_u_t
 
 
@@ -246,15 +254,20 @@ def prediction_step(x_t_prev, u_t, sigma_x_t_prev):
     #NEED TO UPDATE
     #Use something besides zeros
     #variance for ddx ddy 
-    R_t = np.matrix([1,0] \
-                    [0,1])
+    R_t = np.array([[1, 0],
+                    [0, 1]], dtype=float)
 
     # Jacobians
     G_x_t = calc_prop_jacobian_x(x_t_prev, u_t)
     G_u_t = calc_prop_jacobian_u(x_t_prev, u_t)
 
+
     x_bar_t = propogate_state(x_t_prev, u_t)
-    sigma_x_bar_t = G_x_t*sigma_x_t_prev*np.transpose(G_x_t) + G_u_t*R_t*np.transpose(G_u_t)
+    sigma_x_bar_t = G_x_t.dot(sigma_x_t_prev).dot(np.transpose(G_x_t)) + G_u_t.dot(R_t).dot(np.transpose(G_u_t))
+    
+    #Ensure Covariance is 7x7 matrix - needed to use .dot() operator
+    #print("x_bar_t: ", x_bar_t.shape)
+    #print("sigma_x_bar_t: ",sigma_x_bar_t.shape)
     
 
     return [x_bar_t, sigma_x_bar_t]
@@ -269,12 +282,14 @@ def calc_meas_jacobian(x_bar_t):
     Returns:
     H_t (np.array)      -- Jacobian of measurment model
     """
-    [xd x yd y thetad theta thetap] = x_t_prev
+    xd, x, yd, y, thetad, theta, thetap = x_bar_t
 
-    H_t = np.matrix([ 0, -1/math.cos(theta), 0,  0,                 0, (math.sin(theta)*(X_L - x))/math.cos(theta)^2,  0] \
-                    [ 0,  0,                 0, -1/math.cos(theta), 0, (math.sin(theta)*(Y_L - y))/math.cos(theta)^2,  0] \
-                    [ 0,  0,                 0,  0,                 0,  1,                                             0])
+    H_t = np.array([[ 0, -1/math.cos(theta), 0,  0,                 0, (math.sin(theta)*(X_L - x))/np.power(math.cos(theta),2),  0],
+                    [ 0,  0,                 0, -1/math.cos(theta), 0, (math.sin(theta)*(Y_L - y))/np.power(math.cos(theta),2),  0],
+                    [ 0,  0,                 0,  0,                 0,  1,                                             0]],
+                    dtype = float)
 
+    #print("H_t: ", H_t.shape)
     return H_t
 
 
@@ -293,12 +308,15 @@ def calc_kalman_gain(sigma_x_bar_t, H_t):
     #NEED TO UPDATE
     #Use real values
     #x_l, y_l, theta
-    Q_t = np.matrix([1,0,0] \
-                    [0,1,0] \
-                    [0,0,1])
+    Q_t = np.array([[1,0,0],
+                    [0,1,0],
+                    [0,0,1]], dtype = float)
 
     H_t_T = np.transpose(H_t)
-    K_t = sigma_x_bar_t*H_t_T*(np.linalg.inv(H_t*sigma_x_bar_t*H_t_t + Q_t))
+
+    K_t = sigma_x_bar_t.dot(H_t_T).dot((np.linalg.inv(H_t.dot(sigma_x_bar_t).dot(H_t_T) + Q_t)))
+    #Verify Kalman gain is 7x3 to go from measurement 3x1 to state size 7x1
+    #print("Kalman Gain: ", K_t.shape)
 
     return K_t
 
@@ -313,11 +331,13 @@ def calc_meas_prediction(x_bar_t):
     z_bar_t (np.array)  -- the predicted measurement
     """
 
-    [xd x yd y thetad theta thetap] = x_bar_t
+    xd, x, yd, y, thetad, theta, thetap = x_bar_t
 
-    z_bar_t = np.array([(X_L- x)*sec(theta)]\
-                       [(Y_L - y)*sec(theta)]\
-                       [theta])
+    z_bar_t = np.array([(X_L- x)/math.cos(theta),
+                       (Y_L - y)/math.cos(theta),
+                       theta], dtype = float)
+
+    #print("z_bar_t: ", z_bar_t.shape)
 
     return z_bar_t
 
@@ -339,9 +359,14 @@ def correction_step(x_bar_t, z_t, sigma_x_bar_t):
     H_t = calc_meas_jacobian(x_bar_t)
     K_t = calc_kalman_gain(sigma_x_bar_t, H_t)
 
-    x_est_t = x_bar_t + K_t*(z_t-calc_meas_prediction(x_bar_t))
-    
-    sigma_x_est_t = (np.eye(7, dtype=float)-K_t*H_t)*sigma_x_bar_t
+    x_est_t = x_bar_t + K_t.dot((z_t-calc_meas_prediction(x_bar_t)))
+    sigma_x_est_t = (np.eye(7, dtype=float)-K_t.dot(H_t)).dot(sigma_x_bar_t)
+
+    #Need to reshape to 1D array for later processing
+    x_est_t = x_est_t.reshape((7,))
+    #Verify sizes
+    #print("x_est_t: ", x_est_t.shape)
+    #print("sigma_x_est_t: ",sigma_x_est_t.shape)
 
     return [x_est_t, sigma_x_est_t]
 
@@ -349,13 +374,13 @@ def correction_step(x_bar_t, z_t, sigma_x_bar_t):
 def main():
     """Run a EKF on logged data from IMU and LiDAR moving in a box formation around a landmark"""
 
-    filepath = "./logs/"
-    filename =
+    filepath = ""
+    filename = "2020_2_26__16_59_7"
     data, is_filtered = load_data(filepath + filename)
 
     # Save filtered data so don't have to process unfiltered data everytime
     if not is_filtered:
-        data = filter_data(data)
+        f_data = filter_data(data)
         save_data(f_data, filepath+filename+"_filtered.csv")
 
     # Load data into variables
@@ -388,22 +413,20 @@ def main():
 
     #  Run filter over data
     for t, _ in enumerate(time_stamps):
+        
         # Get control input
+        u_t = np.array([[x_ddot[t]], [y_ddot[t]]])
+        #print("u_t: ", u_t.shape)
         
-        u_t = np.array([x_ddot, y_ddot])
-        
-
         # Prediction Step
         state_pred_t, var_pred_t = prediction_step(state_est_t_prev, u_t, var_t_prev)
 
         # Get measurement
-        z_t = np.array([x_lidar, y_lidar, yaw_lidar])
-
+        z_t = np.array([[x_lidar[t]], [y_lidar[t]], [yaw_lidar[t]]])
+        #print("z_t: ", z_t.shape)
 
         # Correction Step
-        state_est_t, var_est_t = correction_step(state_pred_t,
-                                                 z_t,
-                                                 var_pred_t)
+        state_est_t, var_est_t = correction_step(state_pred_t, z_t, var_pred_t)
 
         #  For clarity sake/teaching purposes, we explicitly update t->(t-1)
         state_est_t_prev = state_est_t
@@ -427,13 +450,11 @@ def main():
     plt.figure(1)
     plt.suptitle("EKF Localization: X & Y Measurements")
     plt.subplot(1, 2, 1)
-    plot_yaw(ya, time_stamps, title="Full Log")
+    #Plot x,y
+    plot_yaw(state_estimates[1][t], state_estimates[3][t], title="Full Log")
     plt.subplot(1, 2, 2)
-    plot_yaw(yaw_dict,
-             time_stamps,
-             title="Zoomed",
-             xlim=[14, 24],
-             ylim=[280, 345])
+    plot_yaw(state_estimates[4][t],time_stamps,title="Yaw")
+
     plt.show()
 
     print("Exiting...")
