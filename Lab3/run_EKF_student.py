@@ -254,8 +254,8 @@ def prediction_step(x_t_prev, u_t, sigma_x_t_prev):
     #NEED TO UPDATE
     #Use something besides zeros
     #variance for ddx ddy 
-    R_t = np.array([[1, 0],
-                    [0, 1]], dtype=float)
+    R_t = np.array([[10, 0],
+                    [0, 10]], dtype=float)
 
     # Jacobians
     G_x_t = calc_prop_jacobian_x(x_t_prev, u_t)
@@ -269,6 +269,7 @@ def prediction_step(x_t_prev, u_t, sigma_x_t_prev):
     #print("x_bar_t: ", x_bar_t.shape)
     #print("sigma_x_bar_t: ",sigma_x_bar_t.shape)
     
+    #x_bar_t = x_t_prev.reshape((7,1))
 
     return [x_bar_t, sigma_x_bar_t]
 
@@ -308,9 +309,9 @@ def calc_kalman_gain(sigma_x_bar_t, H_t):
     #NEED TO UPDATE
     #Use real values
     #x_l, y_l, theta
-    Q_t = np.array([[1,0,0],
-                    [0,1,0],
-                    [0,0,1]], dtype = float)
+    Q_t = np.array([[0.1,0,0],
+                    [0,0.1,0],
+                    [0,0,1.9273]], dtype = float)
 
     H_t_T = np.transpose(H_t)
 
@@ -400,7 +401,6 @@ def main():
     lon_origin = lon_gps[0]
 
     #  Initialize filter
-    """STUDENT CODE START"""
     N = 7 # number of states
     #Start in NW corner
     state_est_t_prev = np.array([0,0,0,0,0,0,0])
@@ -409,7 +409,6 @@ def main():
     state_estimates = np.empty((N, len(time_stamps)))
     covariance_estimates = np.empty((N, N, len(time_stamps)))
     gps_estimates = np.empty((2, len(time_stamps)))
-    """STUDENT CODE END"""
 
     #  Run filter over data
     for t, _ in enumerate(time_stamps):
@@ -442,18 +441,20 @@ def main():
                                          lon_origin=lon_origin)
         gps_estimates[:, t] = np.array([x_gps, y_gps])
 
-
+    print(state_estimates.shape)
     # Plot or print results here
     print("\n\nDone filtering...plotting...")
 
     # Plot raw data and estimate
     plt.figure(1)
     plt.suptitle("EKF Localization: X & Y Measurements")
-    plt.subplot(1, 2, 1)
     #Plot x,y
-    plot_yaw(state_estimates[1][t], state_estimates[3][t], title="Full Log")
-    plt.subplot(1, 2, 2)
-    plot_yaw(state_estimates[4][t],time_stamps,title="Yaw")
+    plt.scatter(state_estimates[1][:], state_estimates[3][:])
+    plt.scatter(gps_estimates[0][:],gps_estimates[1][:])
+    plt.xlabel('X [m]')
+    plt.ylabel('Y [m]')
+    plt.xlim([-10, 20])
+    plt.ylim([-20, 10])
 
     plt.show()
 
