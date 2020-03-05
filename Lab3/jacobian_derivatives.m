@@ -31,9 +31,10 @@ G_x = jacobian(g, state_prev);
 G_u = jacobian(g, control);
 
 %% Measurment Model
-
-h = [(X_L- x_p)*sec(theta_p);
-     (Y_L - y_p)*sec(theta_p);
+a = (X_L - x_p)*cos(theta_p + pi/2) -(Y_L- y_p)*sin(theta_p + pi/2);
+b = (X_L - x_p)*sin(theta_p + pi/2) +(Y_L- y_p)*cos(theta_p + pi/2);
+h = [a;
+     b;
      theta_p];
  
 H_x = jacobian(h, state_prev);

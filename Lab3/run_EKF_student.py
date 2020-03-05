@@ -66,6 +66,7 @@ def load_data(filename):
     f.close()
     f_log.close()
 
+    #Convert from CW degrees to CCW radians
     for theta in data["Yaw"]:
         theta = (360-theta)*2*math.pi/360
 
@@ -288,9 +289,9 @@ def calc_meas_jacobian(x_bar_t):
     """
     xd, x, yd, y, thetad, theta, thetap = x_bar_t
 
-    H_t = np.array([[ 0, -1/math.cos(theta-math.pi/2), 0,  0,                 0, (math.sin(theta-math.pi/2)*(X_L - x))/np.power(math.cos(theta-math.pi/2),2),  0],
-                    [ 0,  0,                 0, -1/math.cos(theta-math.pi/2), 0, (math.sin(theta-math.pi/2)*(Y_L - y))/np.power(math.cos(theta-math.pi/2),2),  0],
-                    [ 0,  0,                 0,  0,                 0,  1,                                             0]],
+    H_t = np.array([[ 0, -math.cos(theta + math.pi/2), 0,  math.sin(theta + math.pi/2), 0, - math.cos(theta + math.pi/2)*(Y_L - y) - math.sin(theta + math.pi/2)*(X_L - x), 0],
+                    [ 0, -math.sin(theta + math.pi/2), 0, -math.cos(theta + math.pi/2), 0,   math.cos(theta + math.pi/2)*(X_L - x) - math.sin(theta + math.pi/2)*(Y_L - y), 0],
+                    [ 0,                    0, 0,                    0, 0,                                                                   1, 0]],
                     dtype = float)
 
     #print("H_t: ", H_t.shape)
@@ -337,8 +338,8 @@ def calc_meas_prediction(x_bar_t):
 
     xd, x, yd, y, thetad, theta, thetap = x_bar_t
 
-    z_bar_t = np.array([(X_L-x)*math.cos(theta-math.pi/2) - (Y_L-y)*math.sin(theta-math.pi/2),
-                        (Y_L-y)*math.cos(theta-math.pi/2) + (X_L-x)*math.cos(theta-math.pi/2),
+    z_bar_t = np.array([(X_L-x)*math.cos(theta+math.pi/2) - (Y_L-y)*math.sin(theta+math.pi/2),
+                        (X_L-x)*math.sin(theta+math.pi/2) + (Y_L-y)*math.cos(theta+math.pi/2),
                         theta], dtype = float)
 
     #print("z_bar_t: ", z_bar_t.shape)
@@ -412,6 +413,43 @@ def main():
     state_estimates = np.empty((N, len(time_stamps)))
     covariance_estimates = np.empty((N, N, len(time_stamps)))
     gps_estimates = np.empty((2, len(time_stamps)))
+
+    ##DEBUGGING Functions
+    #Test to go around in box clockwise from NW
+    # state (x,y,theta) would produce lidar measurements x,y
+    origin_z = calc_meas_prediction([0,0,0,0,0,0,0])
+    print("first", origin_z)#0,0,0 Would measure 5,5 in local
+
+    origin_z = calc_meas_prediction([0,5,0,0,0,0,0])
+    print(origin_z)#5,0,0Would be 5,0
+
+    origin_z = calc_meas_prediction([0,10,0,0,0,0,0])
+    print(origin_z)#10,0,0 Would be 5,-5
+
+    origin_z = calc_meas_prediction([0,10,0,-5,0,0,0])
+    print(origin_z)#10,-5,0 Would be 0,-5
+
+    origin_z = calc_meas_prediction([0,10,0,-10,0,0,0])
+    print(origin_z)#10,-10,0 Would be -5,-5
+
+    origin_z = calc_meas_prediction([0,5,0,-10,0,0,0])
+    print(origin_z)#5,-10,0 Would be -5,0
+
+    origin_z = calc_meas_prediction([0,0,0,-10,0,0,0])
+    print(origin_z)#0,-10,0#########Would be -5,5
+
+    origin_z = calc_meas_prediction([0,0,0,-5,0,0,0])
+    print(origin_z)#Would be 0,5
+
+    #Orientation should affect, need to update these tests, previous test work
+    origin_z = calc_meas_prediction([0,0,0,0,0,math.pi/2,0])
+    print(origin_z)# 90 degrees N Would be 5,-5
+
+    origin_z = calc_meas_prediction([0,0,0,0,0,math.pi,0])
+    print(origin_z)#180 degrees Would be 0,-10
+
+    origin_z = calc_meas_prediction([0,0,0,0,0,3*math.pi/4,0])
+    print(origin_z)#135 degrees Would be weird
 
     #  Run filter over data
     for t, _ in enumerate(time_stamps):
