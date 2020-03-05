@@ -66,6 +66,9 @@ def load_data(filename):
     f.close()
     f_log.close()
 
+    for theta in data["Yaw"]:
+        theta = (360-theta)*2*math.pi/360
+
     return data, is_filtered
 
 
@@ -176,7 +179,7 @@ def propogate_state(x_t_prev, u_t):
                         [(theta - thetap)/dt],
                         [thetad*dt],
                         [theta]], dtype = float)
-    
+
 
     return x_bar_t
 
@@ -201,7 +204,7 @@ def calc_prop_jacobian_x(x_t_prev, u_t):
                       [  0, 0, dt, 1,  0,  np.power(dt,2)*((ux*math.cos(theta))/2 - (uy*math.sin(theta))/2),     0],
                       [  0, 0,  0, 0,  0,  1/dt,                                                             -1/dt],
                       [  0, 0,  0, 0, dt,  0,                                                                    0],
-                      [  0, 0,  0, 0,  0,  1,                                                                    0]], 
+                      [  0, 0,  0, 0,  0,  1,                                                                    0]],
                       dtype = float)  # add shape of matrix
 
     #print("G_x_t: ", G_x_t.shape)
@@ -253,7 +256,7 @@ def prediction_step(x_t_prev, u_t, sigma_x_t_prev):
     # Covariance matrix of control input
     #NEED TO UPDATE
     #Use something besides zeros
-    #variance for ddx ddy 
+    #variance for ddx ddy
     R_t = np.array([[10, 0],
                     [0, 10]], dtype=float)
 
@@ -264,11 +267,11 @@ def prediction_step(x_t_prev, u_t, sigma_x_t_prev):
 
     x_bar_t = propogate_state(x_t_prev, u_t)
     sigma_x_bar_t = G_x_t.dot(sigma_x_t_prev).dot(np.transpose(G_x_t)) + G_u_t.dot(R_t).dot(np.transpose(G_u_t))
-    
+
     #Ensure Covariance is 7x7 matrix - needed to use .dot() operator
     #print("x_bar_t: ", x_bar_t.shape)
     #print("sigma_x_bar_t: ",sigma_x_bar_t.shape)
-    
+
     #x_bar_t = x_t_prev.reshape((7,1))
 
     return [x_bar_t, sigma_x_bar_t]
@@ -285,8 +288,8 @@ def calc_meas_jacobian(x_bar_t):
     """
     xd, x, yd, y, thetad, theta, thetap = x_bar_t
 
-    H_t = np.array([[ 0, -1/math.cos(theta), 0,  0,                 0, (math.sin(theta)*(X_L - x))/np.power(math.cos(theta),2),  0],
-                    [ 0,  0,                 0, -1/math.cos(theta), 0, (math.sin(theta)*(Y_L - y))/np.power(math.cos(theta),2),  0],
+    H_t = np.array([[ 0, -1/math.cos(theta-math.pi/2), 0,  0,                 0, (math.sin(theta-math.pi/2)*(X_L - x))/np.power(math.cos(theta-math.pi/2),2),  0],
+                    [ 0,  0,                 0, -1/math.cos(theta-math.pi/2), 0, (math.sin(theta-math.pi/2)*(Y_L - y))/np.power(math.cos(theta-math.pi/2),2),  0],
                     [ 0,  0,                 0,  0,                 0,  1,                                             0]],
                     dtype = float)
 
@@ -304,7 +307,7 @@ def calc_kalman_gain(sigma_x_bar_t, H_t):
     Returns:
     K_t (np.array)            -- Kalman Gain
     """
-   
+
     # Covariance matrix of measurments
     #NEED TO UPDATE
     #Use real values
@@ -334,9 +337,9 @@ def calc_meas_prediction(x_bar_t):
 
     xd, x, yd, y, thetad, theta, thetap = x_bar_t
 
-    z_bar_t = np.array([(X_L- x)/math.cos(theta),
-                       (Y_L - y)/math.cos(theta),
-                       theta], dtype = float)
+    z_bar_t = np.array([(X_L-x)*math.cos(theta-math.pi/2) - (Y_L-y)*math.sin(theta-math.pi/2),
+                        (Y_L-y)*math.cos(theta-math.pi/2) + (X_L-x)*math.cos(theta-math.pi/2),
+                        theta], dtype = float)
 
     #print("z_bar_t: ", z_bar_t.shape)
 
@@ -412,11 +415,11 @@ def main():
 
     #  Run filter over data
     for t, _ in enumerate(time_stamps):
-        
+
         # Get control input
         u_t = np.array([[x_ddot[t]], [y_ddot[t]]])
         #print("u_t: ", u_t.shape)
-        
+
         # Prediction Step
         state_pred_t, var_pred_t = prediction_step(state_est_t_prev, u_t, var_t_prev)
 
@@ -459,7 +462,7 @@ def main():
     plt.show()
 
     print("Exiting...")
- 
+
     return 0
 
 
