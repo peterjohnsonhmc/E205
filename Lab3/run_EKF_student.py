@@ -67,8 +67,11 @@ def load_data(filename):
     f_log.close()
 
     #Convert from CW degrees to CCW radians
-    for theta in data["Yaw"]:
-        theta = (360-theta)*2*math.pi/360
+    # for i in range(0, len(data["Yaw"])):
+    #     theta = data["Yaw"][i]
+    #     theta = (360-theta)*2*math.pi/360
+    #     theta = wrap_to_pi(theta)
+    #     data["Yaw"][i] = theta
 
     return data, is_filtered
 
@@ -173,11 +176,11 @@ def propogate_state(x_t_prev, u_t):
     xd, x, yd, y, thetad, theta, thetap = x_t_prev
     ux, uy = u_t
 
-    x_bar_t = np.array([[xd +              (-uy*math.sin(theta) + ux*math.cos(theta))* dt],
-                        [x  + xd*dt + 1/2* (-uy*math.sin(theta) + ux*math.cos(theta))* np.power(dt,2)],
-                        [yd +               (uy*math.cos(theta) + ux*math.sin(theta))* dt],
-                        [y  + yd*dt + 1/2*  (uy*math.cos(theta) + ux*math.sin(theta))* np.power(dt,2)],
-                        [(theta - thetap)/dt],
+    x_bar_t = np.array([[xd + (-uy*math.sin(theta) + ux*math.cos(theta))* dt],
+                        [x  +  xd*dt],
+                        [yd + (uy*math.cos(theta) + ux*math.sin(theta))* dt],
+                        [y  +  yd*dt],
+                        [(wrap_to_pi(theta - thetap))/dt],
                         [thetad*dt],
                         [theta]], dtype = float)
 
@@ -200,9 +203,9 @@ def calc_prop_jacobian_x(x_t_prev, u_t):
 
 
     G_x_t = np.array([[  1, 0,  0, 0,  0, -dt*(uy*math.cos(theta) + ux*math.sin(theta)),                         0],
-                      [ dt, 1,  0, 0,  0, -np.power(dt,2)*((uy*math.cos(theta))/2 + (ux*math.sin(theta))/2),     0],
+                      [ dt, 1,  0, 0,  0,  0,                                                                    0],
                       [  0, 0,  1, 0,  0,  dt*(ux*math.cos(theta) - uy*math.sin(theta)),                         0],
-                      [  0, 0, dt, 1,  0,  np.power(dt,2)*((ux*math.cos(theta))/2 - (uy*math.sin(theta))/2),     0],
+                      [  0, 0, dt, 1,  0,  0,                                                                    0],
                       [  0, 0,  0, 0,  0,  1/dt,                                                             -1/dt],
                       [  0, 0,  0, 0, dt,  0,                                                                    0],
                       [  0, 0,  0, 0,  0,  1,                                                                    0]],
@@ -228,13 +231,13 @@ def calc_prop_jacobian_u(x_t_prev, u_t):
     xd, x, yd, y, thetad, theta, thetap = x_t_prev
     ux, uy = u_t
 
-    G_u_t = np.array([[ dt*math.cos(theta),             -dt*math.sin(theta)],
-                      [ (np.power(dt,2)*math.cos(theta))/2, -(np.power(dt,2)*math.sin(theta))/2],
-                      [ dt*math.sin(theta),              dt*math.cos(theta)],
-                      [ (np.power(dt,2)*math.sin(theta))/2,       (np.power(dt,2)*math.cos(theta))/2],
-                      [ 0,                                                0],
-                      [ 0,                                                0],
-                      [ 0,                                                0]],
+    G_u_t = np.array([[ dt*math.cos(theta),                                 -dt*math.sin(theta)],
+                      [ 0,                                                                    0],
+                      [ dt*math.sin(theta),                                  dt*math.cos(theta)],
+                      [ 0,                                                                    0],
+                      [ 0,                                                                    0],
+                      [ 0,                                                                    0],
+                      [ 0,                                                                    0]],
                       dtype = float)  # add shape of matrix
 
     #print("G_u_t: ", G_u_t.shape)
@@ -288,10 +291,11 @@ def calc_meas_jacobian(x_bar_t):
     H_t (np.array)      -- Jacobian of measurment model
     """
     xd, x, yd, y, thetad, theta, thetap = x_bar_t
+    w_theta = wrap_to_pi(theta-math.pi/2) # angle wrapping
 
-    H_t = np.array([[ 0, -math.cos(theta + math.pi/2), 0,  math.sin(theta + math.pi/2), 0, - math.cos(theta + math.pi/2)*(Y_L - y) - math.sin(theta + math.pi/2)*(X_L - x), 0],
-                    [ 0, -math.sin(theta + math.pi/2), 0, -math.cos(theta + math.pi/2), 0,   math.cos(theta + math.pi/2)*(X_L - x) - math.sin(theta + math.pi/2)*(Y_L - y), 0],
-                    [ 0,                    0, 0,                    0, 0,                                                                   1, 0]],
+    H_t = np.array([[ 0, -math.cos(w_theta), 0, -math.sin(w_theta), 0,  math.cos(w_theta)*(Y_L - y) - math.sin(w_theta)*(X_L - x), 0],
+                    [ 0,  math.sin(w_theta), 0, -math.cos(w_theta), 0, -math.cos(w_theta)*(X_L - x) - math.sin(w_theta)*(Y_L - y), 0],
+                    [ 0,  0,                           0,  0,                           0,  1,                                                                             0]],
                     dtype = float)
 
     #print("H_t: ", H_t.shape)
@@ -313,8 +317,8 @@ def calc_kalman_gain(sigma_x_bar_t, H_t):
     #NEED TO UPDATE
     #Use real values
     #x_l, y_l, theta
-    Q_t = np.array([[0.1,0,0],
-                    [0,0.1,0],
+    Q_t = np.array([[0.0075**2,0,0],
+                    [0,0.0075**2,0],
                     [0,0,1.9273]], dtype = float)
 
     H_t_T = np.transpose(H_t)
@@ -337,9 +341,10 @@ def calc_meas_prediction(x_bar_t):
     """
 
     xd, x, yd, y, thetad, theta, thetap = x_bar_t
+    w_theta = wrap_to_pi(-theta+math.pi/2) # angle wrapping
 
-    z_bar_t = np.array([(X_L-x)*math.cos(theta+math.pi/2) - (Y_L-y)*math.sin(theta+math.pi/2),
-                        (X_L-x)*math.sin(theta+math.pi/2) + (Y_L-y)*math.cos(theta+math.pi/2),
+    z_bar_t = np.array([(X_L-x)*math.cos(w_theta) - (Y_L-y)*math.sin(w_theta),
+                        (X_L-x)*math.sin(w_theta) + (Y_L-y)*math.cos(w_theta),
                         theta], dtype = float)
 
     #print("z_bar_t: ", z_bar_t.shape)
@@ -373,6 +378,7 @@ def correction_step(x_bar_t, z_t, sigma_x_bar_t):
     #print("x_est_t: ", x_est_t.shape)
     #print("sigma_x_est_t: ",sigma_x_est_t.shape)
 
+    #x_est_t = x_bar_t.reshape((7,))
     return [x_est_t, sigma_x_est_t]
 
 
@@ -380,7 +386,7 @@ def main():
     """Run a EKF on logged data from IMU and LiDAR moving in a box formation around a landmark"""
 
     filepath = ""
-    filename = "2020_2_26__16_59_7"
+    filename = "2020_2_26__17_21_59" #"2020_2_26__16_59_7"
     data, is_filtered = load_data(filepath + filename)
 
     # Save filtered data so don't have to process unfiltered data everytime
@@ -408,7 +414,7 @@ def main():
     N = 7 # number of states
     #Start in NW corner
     state_est_t_prev = np.array([0,0,0,0,0,0,0])
-    var_t_prev = np.identity(N)
+    var_est_t_prev = np.identity(N)
 
     state_estimates = np.empty((N, len(time_stamps)))
     covariance_estimates = np.empty((N, N, len(time_stamps)))
@@ -446,7 +452,7 @@ def main():
     print(origin_z)# 90 degrees N Would be 5,-5
 
     origin_z = calc_meas_prediction([0,0,0,0,0,math.pi,0])
-    print(origin_z)#180 degrees Would be 0,-10
+    print(origin_z)#180 degrees Would be -5,-5
 
     origin_z = calc_meas_prediction([0,0,0,0,0,3*math.pi/4,0])
     print(origin_z)#135 degrees Would be weird
@@ -459,7 +465,7 @@ def main():
         #print("u_t: ", u_t.shape)
 
         # Prediction Step
-        state_pred_t, var_pred_t = prediction_step(state_est_t_prev, u_t, var_t_prev)
+        state_pred_t, var_pred_t = prediction_step(state_est_t_prev, u_t, var_est_t_prev)
 
         # Get measurement
         z_t = np.array([[x_lidar[t]], [y_lidar[t]], [yaw_lidar[t]]])
@@ -496,6 +502,15 @@ def main():
     plt.ylabel('Y [m]')
     plt.xlim([-10, 20])
     plt.ylim([-20, 10])
+
+    plt.show()
+
+    plt.figure(2)
+    plt.suptitle("EKF Localization: X & Y Measurements")
+    #Plot x,y
+    plt.scatter(time_stamps, state_estimates[5][:])
+    plt.scatter(time_stamps, data["Yaw"])
+    plt.ylim([-math.pi-.2, math.pi+.2])
 
     plt.show()
 
