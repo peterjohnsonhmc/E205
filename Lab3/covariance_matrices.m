@@ -19,5 +19,30 @@ AccelX = dat(:,10);
 AccelY = dat(:,11); 
 AccelZ = dat(:,12);
 
+k=50;
+AX = movmean(AccelX,k);
+AY = movmean(AccelY,k);
+T=706;
 figure(1)
-plot(X,Y);
+plot(AX(1:T));
+ylim([-2,2])
+%plot(AccelX);
+
+figure(2)
+plot(AY(1:T));
+ylim([-2,2])
+
+%Upon inspection, first 100 values seem to be within the same amount of
+%noise
+
+varx = var(AccelX(1:80));
+vary = var(AccelY(1:80));
+
+figure(3)
+plot(X)
+
+figure(4)
+plot(Y)
+
+figure(5)
+plot(Yaw);

@@ -67,11 +67,11 @@ def load_data(filename):
     f_log.close()
 
     #Convert from CW degrees to CCW radians
-    # for i in range(0, len(data["Yaw"])):
-    #     theta = data["Yaw"][i]
-    #     theta = (360-theta)*2*math.pi/360
-    #     theta = wrap_to_pi(theta)
-    #     data["Yaw"][i] = theta
+    for i in range(0, len(data["Yaw"])):
+        theta = data["Yaw"][i]
+        theta = (360-theta)*2*math.pi/360
+        theta = wrap_to_pi(theta)
+        data["Yaw"][i] = theta
 
     return data, is_filtered
 
@@ -261,8 +261,8 @@ def prediction_step(x_t_prev, u_t, sigma_x_t_prev):
     #NEED TO UPDATE
     #Use something besides zeros
     #variance for ddx ddy
-    R_t = np.array([[10, 0],
-                    [0, 10]], dtype=float)
+    R_t = np.array([[1.8373, 0],
+                    [0, 1.1991]], dtype=float)
 
     # Jacobians
     G_x_t = calc_prop_jacobian_x(x_t_prev, u_t)
@@ -323,7 +323,7 @@ def calc_kalman_gain(sigma_x_bar_t, H_t):
 
     H_t_T = np.transpose(H_t)
 
-    K_t = sigma_x_bar_t.dot(H_t_T).dot((np.linalg.inv(H_t.dot(sigma_x_bar_t).dot(H_t_T) + Q_t)))
+    K_t = sigma_x_bar_t.dot(H_t_T).dot(np.linalg.inv(H_t.dot(sigma_x_bar_t).dot(H_t_T) + Q_t))
     #Verify Kalman gain is 7x3 to go from measurement 3x1 to state size 7x1
     #print("Kalman Gain: ", K_t.shape)
 
@@ -342,12 +342,14 @@ def calc_meas_prediction(x_bar_t):
 
     xd, x, yd, y, thetad, theta, thetap = x_bar_t
     w_theta = wrap_to_pi(-theta+math.pi/2) # angle wrapping
+    #print("w_theta:, ", w_theta)
 
     z_bar_t = np.array([(X_L-x)*math.cos(w_theta) - (Y_L-y)*math.sin(w_theta),
                         (X_L-x)*math.sin(w_theta) + (Y_L-y)*math.cos(w_theta),
                         theta], dtype = float)
 
     #print("z_bar_t: ", z_bar_t.shape)
+    #print("z_bar_t: ", z_bar_t)
 
     return z_bar_t
 
@@ -369,7 +371,14 @@ def correction_step(x_bar_t, z_t, sigma_x_bar_t):
     H_t = calc_meas_jacobian(x_bar_t)
     K_t = calc_kalman_gain(sigma_x_bar_t, H_t)
 
-    x_est_t = x_bar_t + K_t.dot((z_t-calc_meas_prediction(x_bar_t)))
+    z_bar_t = calc_meas_prediction(x_bar_t)
+    resid = np.array([z_t[0]-z_bar_t[0],
+                      z_t[1]-z_bar_t[1],
+                      wrap_to_pi(z_t[2]-z_bar_t[2])], dtype = float)
+    #print("resid = ", resid)
+
+
+    x_est_t = x_bar_t + K_t.dot(resid)
     sigma_x_est_t = (np.eye(7, dtype=float)-K_t.dot(H_t)).dot(sigma_x_bar_t)
 
     #Need to reshape to 1D array for later processing
@@ -386,7 +395,7 @@ def main():
     """Run a EKF on logged data from IMU and LiDAR moving in a box formation around a landmark"""
 
     filepath = ""
-    filename = "2020_2_26__17_21_59" #"2020_2_26__16_59_7"
+    filename = "2020_2_26__16_59_7" #"2020_2_26__17_21_59" #
     data, is_filtered = load_data(filepath + filename)
 
     # Save filtered data so don't have to process unfiltered data everytime
@@ -416,6 +425,9 @@ def main():
     state_est_t_prev = np.array([0,0,0,0,0,0,0])
     var_est_t_prev = np.identity(N)
 
+    #allocate
+    state_predictions = np.empty((N, len(time_stamps)))
+    z_bars = np.empty((3,len(time_stamps)))
     state_estimates = np.empty((N, len(time_stamps)))
     covariance_estimates = np.empty((N, N, len(time_stamps)))
     gps_estimates = np.empty((2, len(time_stamps)))
@@ -423,39 +435,39 @@ def main():
     ##DEBUGGING Functions
     #Test to go around in box clockwise from NW
     # state (x,y,theta) would produce lidar measurements x,y
-    origin_z = calc_meas_prediction([0,0,0,0,0,0,0])
-    print("first", origin_z)#0,0,0 Would measure 5,5 in local
+    # origin_z = calc_meas_prediction([0,0,0,0,0,0,0])
+    # print("first", origin_z)#0,0,0 Would measure 5,5 in local
 
-    origin_z = calc_meas_prediction([0,5,0,0,0,0,0])
-    print(origin_z)#5,0,0Would be 5,0
+    # origin_z = calc_meas_prediction([0,5,0,0,0,0,0])
+    # print(origin_z)#5,0,0Would be 5,0
 
-    origin_z = calc_meas_prediction([0,10,0,0,0,0,0])
-    print(origin_z)#10,0,0 Would be 5,-5
+    # origin_z = calc_meas_prediction([0,10,0,0,0,0,0])
+    # print(origin_z)#10,0,0 Would be 5,-5
 
-    origin_z = calc_meas_prediction([0,10,0,-5,0,0,0])
-    print(origin_z)#10,-5,0 Would be 0,-5
+    # origin_z = calc_meas_prediction([0,10,0,-5,0,0,0])
+    # print(origin_z)#10,-5,0 Would be 0,-5
 
-    origin_z = calc_meas_prediction([0,10,0,-10,0,0,0])
-    print(origin_z)#10,-10,0 Would be -5,-5
+    # origin_z = calc_meas_prediction([0,10,0,-10,0,0,0])
+    # print(origin_z)#10,-10,0 Would be -5,-5
 
-    origin_z = calc_meas_prediction([0,5,0,-10,0,0,0])
-    print(origin_z)#5,-10,0 Would be -5,0
+    # origin_z = calc_meas_prediction([0,5,0,-10,0,0,0])
+    # print(origin_z)#5,-10,0 Would be -5,0
 
-    origin_z = calc_meas_prediction([0,0,0,-10,0,0,0])
-    print(origin_z)#0,-10,0#########Would be -5,5
+    # origin_z = calc_meas_prediction([0,0,0,-10,0,0,0])
+    # print(origin_z)#0,-10,0#########Would be -5,5
 
-    origin_z = calc_meas_prediction([0,0,0,-5,0,0,0])
-    print(origin_z)#Would be 0,5
+    # origin_z = calc_meas_prediction([0,0,0,-5,0,0,0])
+    # print(origin_z)#Would be 0,5
 
-    #Orientation should affect, need to update these tests, previous test work
-    origin_z = calc_meas_prediction([0,0,0,0,0,math.pi/2,0])
-    print(origin_z)# 90 degrees N Would be 5,-5
+    # #Orientation should affect, need to update these tests, previous test work
+    # origin_z = calc_meas_prediction([0,0,0,0,0,math.pi/2,0])
+    # print(origin_z)# 90 degrees N Would be 5,-5
 
-    origin_z = calc_meas_prediction([0,0,0,0,0,math.pi,0])
-    print(origin_z)#180 degrees Would be -5,-5
+    # origin_z = calc_meas_prediction([0,0,0,0,0,math.pi,0])
+    # print(origin_z)#180 degrees Would be -5,-5
 
-    origin_z = calc_meas_prediction([0,0,0,0,0,3*math.pi/4,0])
-    print(origin_z)#135 degrees Would be weird
+    # origin_z = calc_meas_prediction([0,0,0,0,0,3*math.pi/4,0])
+    # print(origin_z)#135 degrees Would be weird
 
     #  Run filter over data
     for t, _ in enumerate(time_stamps):
@@ -466,6 +478,9 @@ def main():
 
         # Prediction Step
         state_pred_t, var_pred_t = prediction_step(state_est_t_prev, u_t, var_est_t_prev)
+
+        #Adding something silly to test
+        z_bar_t = calc_meas_prediction(state_pred_t)
 
         # Get measurement
         z_t = np.array([[x_lidar[t]], [y_lidar[t]], [yaw_lidar[t]]])
@@ -479,6 +494,7 @@ def main():
         var_est_t_prev = var_est_t
 
         # Log Data
+        z_bars[:, t] = z_bar_t.reshape((3,))
         state_estimates[:, t] = state_est_t
         covariance_estimates[:, :, t] = var_est_t
 
@@ -488,7 +504,7 @@ def main():
                                          lon_origin=lon_origin)
         gps_estimates[:, t] = np.array([x_gps, y_gps])
 
-    print(state_estimates.shape)
+
     # Plot or print results here
     print("\n\nDone filtering...plotting...")
 
@@ -496,8 +512,12 @@ def main():
     plt.figure(1)
     plt.suptitle("EKF Localization: X & Y Measurements")
     #Plot x,y
-    plt.scatter(state_estimates[1][:], state_estimates[3][:])
-    plt.scatter(gps_estimates[0][:],gps_estimates[1][:])
+    T1 = 0
+    T2 = len(time_stamps)
+    print(np.mean(state_predictions[0][T1:T2]))
+    plt.scatter(state_estimates[1][T1:T2], state_estimates[3][T1:T2])
+    plt.scatter(gps_estimates[0][T1:T2],gps_estimates[1][T1:T2])
+    plt.scatter(state_predictions[1][T1:T2], state_predictions[3][T1:T2])
     plt.xlabel('X [m]')
     plt.ylabel('Y [m]')
     plt.xlim([-10, 20])
@@ -506,13 +526,59 @@ def main():
     plt.show()
 
     plt.figure(2)
-    plt.suptitle("EKF Localization: X & Y Measurements")
+    plt.suptitle("EKF Localization: Est &  Meas Yaw")
     #Plot x,y
     plt.scatter(time_stamps, state_estimates[5][:])
     plt.scatter(time_stamps, data["Yaw"])
     plt.ylim([-math.pi-.2, math.pi+.2])
-
     plt.show()
+
+    plt.figure(3)
+    plt.suptitle("EKF Localization: X ")
+    #Plot x,y
+    plt.scatter(time_stamps, state_estimates[1][:])
+    plt.scatter(time_stamps, state_predictions[1][:])
+    plt.ylabel('X [m]')
+    plt.ylim([-20, 10])
+    plt.show()
+
+    plt.figure(4)
+    plt.suptitle("EKF Localization: Y ")
+    #Plot x,y
+    plt.scatter(time_stamps, state_estimates[3][:])
+    plt.scatter(time_stamps, state_predictions[3][:])
+    plt.ylabel('Y [m]')
+    plt.ylim([-20, 10])
+    plt.show()
+
+    plt.figure(5)
+    plt.suptitle("EKF Localization: Z_bar_t x ")
+    #Plot x,y
+    plt.scatter(time_stamps, z_bars[0][:])
+    plt.scatter(time_stamps, x_lidar[:])
+    plt.ylabel('Xmeasbar [m]')
+    plt.ylim([0, 10])
+    plt.show()
+
+    plt.figure(6)
+    plt.suptitle("EKF Localization: Z_bar_t y ")
+    #Plot x,y
+    plt.scatter(time_stamps, z_bars[1][:])
+    plt.scatter(time_stamps, y_lidar[:])
+    plt.ylabel('Ymeasbar [m]')
+    plt.ylim([-10, 10])
+    plt.show()
+
+    plt.figure(7)
+    plt.suptitle("V_x")
+    plt.scatter(time_stamps, state_estimates[0][:])
+    plt.show()
+
+    plt.figure(8)
+    plt.suptitle("V_y")
+    plt.scatter(time_stamps, state_estimates[2][:])
+    plt.show()
+
 
     print("Exiting...")
 

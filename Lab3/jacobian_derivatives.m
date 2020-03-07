@@ -18,9 +18,9 @@ control = [a_xi;
            
 
 g=[v_x_p + (-a_yi*sin(theta_p)+a_xi*cos(theta_p))*dt;
-    x_p + v_x_p*dt + 1/2*(-a_yi*sin(theta_p)+a_xi*cos(theta_p))*dt^2;
+    x_p + v_x_p*dt ;
     v_y_p + (a_yi*cos(theta_p)+ a_xi*sin(theta_p))*dt;
-    y_p + v_y_p*dt + 1/2*(a_yi*cos(theta_p)+ a_xi*sin(theta_p))*dt^2;
+    y_p + v_y_p*dt;
     (theta_p - theta_prev_p)/dt;
     v_theta_p*dt;
     theta_p];
@@ -31,8 +31,8 @@ G_x = jacobian(g, state_prev);
 G_u = jacobian(g, control);
 
 %% Measurment Model
-a = (X_L - x_p)*cos(theta_p + pi/2) -(Y_L- y_p)*sin(theta_p + pi/2);
-b = (X_L - x_p)*sin(theta_p + pi/2) +(Y_L- y_p)*cos(theta_p + pi/2);
+a = (X_L - x_p)*cos(-theta_p + pi/2) -(Y_L- y_p)*sin(-theta_p + pi/2);
+b = (X_L - x_p)*sin(-theta_p + pi/2) +(Y_L- y_p)*cos(-theta_p + pi/2);
 h = [a;
      b;
      theta_p];
