@@ -17,12 +17,12 @@ control = [a_xi;
            a_yi];
            
 
-g=[v_x_p + (-a_yi*sin(theta_p)+a_xi*cos(theta_p))*dt;
+g=[v_x_p + (-a_yi*sin(-theta_p)+a_xi*cos(-theta_p))*dt;
     x_p + v_x_p*dt ;
-    v_y_p + (a_yi*cos(theta_p)+ a_xi*sin(theta_p))*dt;
+    v_y_p + (a_yi*cos(-theta_p)+ a_xi*sin(-theta_p))*dt;
     y_p + v_y_p*dt;
     (theta_p - theta_prev_p)/dt;
-    v_theta_p*dt;
+    theta_p+  v_theta_p*dt;
     theta_p];
 
 %Jacobian wrt to state

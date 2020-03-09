@@ -69,7 +69,7 @@ def load_data(filename):
     #Convert from CW degrees to CCW radians
     for i in range(0, len(data["Yaw"])):
         theta = data["Yaw"][i]
-        theta = (360-theta)*2*math.pi/360
+        theta = -theta*2*math.pi/360
         theta = wrap_to_pi(theta)
         data["Yaw"][i] = theta
 
@@ -176,14 +176,17 @@ def propogate_state(x_t_prev, u_t):
     xd, x, yd, y, thetad, theta, thetap = x_t_prev
     ux, uy = u_t
 
-    x_bar_t = np.array([[xd + (-uy*math.sin(theta) + ux*math.cos(theta))* dt],
+    x_bar_t = np.array([[xd + (ux*math.cos(-theta) - uy*math.sin(-theta))* dt],
                         [x  +  xd*dt],
-                        [yd + (uy*math.cos(theta) + ux*math.sin(theta))* dt],
+                        [yd + (ux*math.sin(-theta) + uy*math.cos(-theta))* dt],
                         [y  +  yd*dt],
                         [(wrap_to_pi(theta - thetap))/dt],
-                        [thetad*dt],
+                        [wrap_to_pi(theta + thetad*dt)],
                         [theta]], dtype = float)
 
+    #Predict that we are in the same place as last time
+    #x_bar_t = np.array([xd, x, yd, y, thetad, theta, thetap]).reshape(7,1)
+    #print("x_bar_t: ", x_bar_t.shape)
 
     return x_bar_t
 
@@ -201,15 +204,15 @@ def calc_prop_jacobian_x(x_t_prev, u_t):
     xd, x, yd, y, thetad, theta, thetap = x_t_prev
     ux, uy = u_t
 
-
-    G_x_t = np.array([[  1, 0,  0, 0,  0, -dt*(uy*math.cos(theta) + ux*math.sin(theta)),                         0],
-                      [ dt, 1,  0, 0,  0,  0,                                                                    0],
-                      [  0, 0,  1, 0,  0,  dt*(ux*math.cos(theta) - uy*math.sin(theta)),                         0],
-                      [  0, 0, dt, 1,  0,  0,                                                                    0],
-                      [  0, 0,  0, 0,  0,  1/dt,                                                             -1/dt],
-                      [  0, 0,  0, 0, dt,  0,                                                                    0],
-                      [  0, 0,  0, 0,  0,  1,                                                                    0]],
+    G_x_t = np.array([[  1, 0,  0, 0,  0,  dt*(uy*math.cos(theta) - ux*math.sin(theta)),  0],
+                      [ dt, 1,  0, 0,  0,  0,                                             0],
+                      [  0, 0,  1, 0,  0,  dt*(-ux*math.cos(theta) - uy*math.sin(theta)), 0],
+                      [  0, 0, dt, 1,  0,  0,                                             0],
+                      [  0, 0,  0, 0,  0,  1/dt,                                      -1/dt],
+                      [  0, 0,  0, 0, dt,  1,                                             0],
+                      [  0, 0,  0, 0,  0,  1,                                             0]],
                       dtype = float)  # add shape of matrix
+    #G_x_t = np.eye(7,dtype = float)
 
     #print("G_x_t: ", G_x_t.shape)
 
@@ -231,14 +234,15 @@ def calc_prop_jacobian_u(x_t_prev, u_t):
     xd, x, yd, y, thetad, theta, thetap = x_t_prev
     ux, uy = u_t
 
-    G_u_t = np.array([[ dt*math.cos(theta),                                 -dt*math.sin(theta)],
-                      [ 0,                                                                    0],
-                      [ dt*math.sin(theta),                                  dt*math.cos(theta)],
-                      [ 0,                                                                    0],
-                      [ 0,                                                                    0],
-                      [ 0,                                                                    0],
-                      [ 0,                                                                    0]],
+    G_u_t = np.array([[ dt*math.cos(theta),  dt*math.sin(theta)],
+                      [ 0,                                     0],
+                      [ -dt*math.sin(theta), dt*math.cos(theta)],
+                      [ 0,                                     0],
+                      [ 0,                                     0],
+                      [ 0,                                     0],
+                      [ 0,                                     0]],
                       dtype = float)  # add shape of matrix
+    #G_u_t = np.zeros((7,2), dtype = float)
 
     #print("G_u_t: ", G_u_t.shape)
     return G_u_t
@@ -319,7 +323,7 @@ def calc_kalman_gain(sigma_x_bar_t, H_t):
     #x_l, y_l, theta
     Q_t = np.array([[0.0075**2,0,0],
                     [0,0.0075**2,0],
-                    [0,0,1.9273]], dtype = float)
+                    [0,0,5.8709*(10**(-4))]], dtype = float)
 
     H_t_T = np.transpose(H_t)
 
@@ -469,6 +473,9 @@ def main():
     # origin_z = calc_meas_prediction([0,0,0,0,0,3*math.pi/4,0])
     # print(origin_z)#135 degrees Would be weird
 
+    x_bar = propogate_state([0,0,0,0,0,math.pi/2,math.pi/2],[0,0.1])
+    print(x_bar)
+
     #  Run filter over data
     for t, _ in enumerate(time_stamps):
 
@@ -496,6 +503,7 @@ def main():
         # Log Data
         z_bars[:, t] = z_bar_t.reshape((3,))
         state_estimates[:, t] = state_est_t
+        state_predictions[:, t] = state_pred_t.reshape((7,))
         covariance_estimates[:, :, t] = var_est_t
 
         x_gps, y_gps = convert_gps_to_xy(lat_gps=lat_gps[t],
@@ -504,6 +512,9 @@ def main():
                                          lon_origin=lon_origin)
         gps_estimates[:, t] = np.array([x_gps, y_gps])
 
+        if (np.isnan(state_pred_t[0])):
+            print("COVID-19")
+            break
 
     # Plot or print results here
     print("\n\nDone filtering...plotting...")
@@ -514,14 +525,15 @@ def main():
     #Plot x,y
     T1 = 0
     T2 = len(time_stamps)
+    print(state_predictions[0][T1:T2])
     print(np.mean(state_predictions[0][T1:T2]))
     plt.scatter(state_estimates[1][T1:T2], state_estimates[3][T1:T2])
-    plt.scatter(gps_estimates[0][T1:T2],gps_estimates[1][T1:T2])
+    plt.scatter(gps_estimates[0][:],gps_estimates[1][:])
     plt.scatter(state_predictions[1][T1:T2], state_predictions[3][T1:T2])
     plt.xlabel('X [m]')
     plt.ylabel('Y [m]')
-    plt.xlim([-10, 20])
-    plt.ylim([-20, 10])
+    #plt.xlim([-10, 20])
+    #plt.ylim([-20, 10])
 
     plt.show()
 
