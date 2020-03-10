@@ -16,7 +16,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import math
 import os.path
-import matplotlib.animation as animation
 
 HEIGHT_THRESHOLD = 0.0  # meters
 GROUND_HEIGHT_THRESHOLD = -.4  # meters
@@ -269,7 +268,7 @@ def prediction_step(x_t_prev, u_t, sigma_x_t_prev):
     #NEED TO UPDATE
     #Use something besides zeros
     #variance for ddx ddy, yaw
-    R_t = np.array([[1.8373, 0,      0],            
+    R_t = np.array([[1.8373, 0,      0],
                     [0,      1.1991, 0],
                     [0,      0,      0.00058709]],
                     dtype=float)
@@ -341,8 +340,8 @@ def local_to_global(x_bar_t, z_t):
     zx, zy = z_t
     w_theta = wrap_to_pi(-theta+math.pi/2)
 
-    z_global = np.array([zx*math.cos(w_theta) - zy*math.sin(w_theta),
-                         zx*math.sin(w_theta) + zy*math.cos(w_theta)],
+    z_global = np.array([zx*math.cos(w_theta) + zy*math.sin(w_theta),
+                         -zx*math.sin(w_theta) + zy*math.cos(w_theta)],
                          dtype = float)
 
     return z_global
@@ -415,7 +414,7 @@ def main():
     """Run a EKF on logged data from IMU and LiDAR moving in a box formation around a landmark"""
 
     filepath = ""
-    filename = "2020_2_26__17_21_59" ##"2020_2_26__16_59_7" #
+    filename =  "2020_2_26__16_59_7" #"2020_2_26__17_21_59"
     data, is_filtered = load_data(filepath + filename)
 
     # Save filtered data so don't have to process unfiltered data everytime
@@ -455,39 +454,39 @@ def main():
     ##DEBUGGING Functions
     #Test to go around in box clockwise from NW
     # state (x,y,theta) would produce lidar measurements x,y
-    origin_z = calc_meas_prediction([0,0,0,0,0,0,0])
-    print("first", origin_z)#0,0,0 Would measure 5,-5 in global
-
-    origin_z = calc_meas_prediction([0,5,0,0,0,0,0])
-    print(origin_z)#5,0,0Would be 0,-5
-
-    origin_z = calc_meas_prediction([0,10,0,0,0,0,0])
-    print(origin_z)#10,0,0 Would be -5,-5
-
-    origin_z = calc_meas_prediction([0,10,0,-5,0,0,0])
-    print(origin_z)#10,-5,0 Would be -5,0
-
-    origin_z = calc_meas_prediction([0,10,0,-10,0,0,0])
-    print(origin_z)#10,-10,0 Would be -5,5
-
-    origin_z = calc_meas_prediction([0,5,0,-10,0,0,0])
-    print(origin_z)#5,-10,0 Would be 0,5
-
-    origin_z = calc_meas_prediction([0,0,0,-10,0,0,0])
-    print(origin_z)#0,-10,0#########Would be 5,5
-
-    origin_z = calc_meas_prediction([0,0,0,-5,0,0,0])
-    print(origin_z)#Would be 5,0
-
-    #Orientation should not affect, need to update these tests, previous test work
-    origin_z = calc_meas_prediction([0,0,0,0,0,math.pi/2,0])
-    print(origin_z)# 90 degrees N Would be 5,-5
-
-    origin_z = calc_meas_prediction([0,0,0,0,0,math.pi,0])
-    print(origin_z)#180 degrees Would be 5,-5
-
-    origin_z = calc_meas_prediction([0,0,0,0,0,3*math.pi/4,0])
-    print(origin_z)#135 degrees Would be 5,-5
+    # origin_z = calc_meas_prediction([0,0,0,0,0,0,0])
+    # print("first", origin_z)#0,0,0 Would measure 5,-5 in global
+    #
+    # origin_z = calc_meas_prediction([0,5,0,0,0,0,0])
+    # print(origin_z)#5,0,0Would be 0,-5
+    #
+    # origin_z = calc_meas_prediction([0,10,0,0,0,0,0])
+    # print(origin_z)#10,0,0 Would be -5,-5
+    #
+    # origin_z = calc_meas_prediction([0,10,0,-5,0,0,0])
+    # print(origin_z)#10,-5,0 Would be -5,0
+    #
+    # origin_z = calc_meas_prediction([0,10,0,-10,0,0,0])
+    # print(origin_z)#10,-10,0 Would be -5,5
+    #
+    # origin_z = calc_meas_prediction([0,5,0,-10,0,0,0])
+    # print(origin_z)#5,-10,0 Would be 0,5
+    #
+    # origin_z = calc_meas_prediction([0,0,0,-10,0,0,0])
+    # print(origin_z)#0,-10,0#########Would be 5,5
+    #
+    # origin_z = calc_meas_prediction([0,0,0,-5,0,0,0])
+    # print(origin_z)#Would be 5,0
+    #
+    # #Orientation should not affect, need to update these tests, previous test work
+    # origin_z = calc_meas_prediction([0,0,0,0,0,math.pi/2,0])
+    # print(origin_z)# 90 degrees N Would be 5,-5
+    #
+    # origin_z = calc_meas_prediction([0,0,0,0,0,math.pi,0])
+    # print(origin_z)#180 degrees Would be 5,-5
+    #
+    # origin_z = calc_meas_prediction([0,0,0,0,0,3*math.pi/4,0])
+    # print(origin_z)#135 degrees Would be 5,-5
 
     #Generate expected path expected state
     # state_expected = np.empty((N, len(time_stamps)))
@@ -546,32 +545,21 @@ def main():
 
 
     # Plot or print results here
-    print("\n\nDone filtering...plotting...")
-    
-    nbPoints = 100
-
-    nanArray = np.array(np.ones(nbPoints))
-    nanArray[:] = np.nan
-    index = range(nbPoints)
-    minimum = np.random.randint(5, size=nbPoints)
-    minimumPlotData = nanArray 
-
-    fig = plt.figure()
-    ax = plt.subplot(111)
-    ax.set_xlim(0, nbPoints)
-    ax.set_ylim(min(minimum), max(minimum))
-    li, = ax.plot(index,minimumPlotData, marker = 'o', linestyle="")
-
-    fig.canvas.draw()
-    plt.show(block=False)
-    for i in range(nbPoints):
-        minimumPlotData[i]=minimum[i]
-        li.set_ydata(minimumPlotData)
-        fig.canvas.draw()
-        time.sleep(1)
+    # print("\n\nDone filtering...plotting...")
+    # plt.figure(1)
+    # plt.axis([-5, 15, -15, 5])
+    # for t in range(len(time_stamps)):
+    #     x = state_estimates[1][t]
+    #     y = state_estimates[3][t]
+    #     xg = gps_estimates[0][t]
+    #     yg = gps_estimates[1][t]
+    #     plt.scatter(x, y, c='r')
+    #     plt.scatter(xg, yg, c='b')
+    #     plt.pause(0.0005)
+    # plt.show()
 
     # Plot raw data and estimate
-    plt.figure(1)
+    plt.figure(2)
     plt.suptitle("EKF Localization: X & Y Measurements")
     #Plot x,y
     T1 = 0
@@ -583,12 +571,11 @@ def main():
     plt.scatter(state_predictions[1][T1:T2], state_predictions[3][T1:T2])
     plt.xlabel('X [m]')
     plt.ylabel('Y [m]')
-    #plt.xlim([-10, 20])
-    #plt.ylim([-20, 10])
-
+    plt.xlim([-10, 20])
+    plt.ylim([-20, 10])
     plt.show()
 
-    plt.figure(2)
+    plt.figure(3)
     plt.suptitle("EKF Localization: Est &  Meas Yaw")
     #Plot x,y
     plt.scatter(time_stamps, data["Yaw"])
@@ -597,7 +584,7 @@ def main():
     plt.ylim([-math.pi-.2, math.pi+.2])
     plt.show()
 
-    plt.figure(3)
+    plt.figure(4)
     plt.suptitle("EKF Localization: X ")
     #Plot x,y
     plt.scatter(time_stamps, state_estimates[1][:])
@@ -606,7 +593,7 @@ def main():
     plt.ylim([-20, 10])
     plt.show()
 
-    plt.figure(4)
+    plt.figure(5)
     plt.suptitle("EKF Localization: Y ")
     #Plot x,y
     plt.scatter(time_stamps, state_estimates[3][:])
@@ -615,7 +602,7 @@ def main():
     plt.ylim([-20, 10])
     plt.show()
 
-    plt.figure(5)
+    plt.figure(6)
     plt.suptitle("EKF Localization: Z_bar_t x ")
     #Plot x,y
     plt.scatter(time_stamps, z_bars[0][:])
@@ -624,7 +611,7 @@ def main():
     plt.ylim([0, 10])
     plt.show()
 
-    plt.figure(6)
+    plt.figure(7)
     plt.suptitle("EKF Localization: Z_bar_t y ")
     #Plot x,y
     plt.scatter(time_stamps, z_bars[1][:])
@@ -633,12 +620,12 @@ def main():
     plt.ylim([-10, 10])
     plt.show()
 
-    plt.figure(7)
+    plt.figure(8)
     plt.suptitle("V_x")
     plt.scatter(time_stamps, state_estimates[0][:])
     plt.show()
 
-    plt.figure(8)
+    plt.figure(9)
     plt.suptitle("V_y")
     plt.scatter(time_stamps, state_estimates[2][:])
     plt.show()

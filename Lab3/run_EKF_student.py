@@ -177,7 +177,7 @@ def propogate_state(x_t_prev, u_t):
     ux, uy = u_t
 
     #Steph's group used ax, ay, theta as control input, jacobian of G_X_t was more sparse
-    #ie uy and ux terms were not present in the xd and xy 
+    #ie uy and ux terms were not present in the xd and xy
     x_bar_t = np.array([[xd + (ux*math.cos(theta) - uy*math.sin(theta))* dt],
                         [x  +  xd*dt],
                         [yd + (ux*math.sin(theta) + uy*math.cos(theta))* dt],
@@ -297,15 +297,12 @@ def calc_meas_jacobian(x_bar_t):
     H_t (np.array)      -- Jacobian of measurment model
     """
     xd, x, yd, y, thetad, theta, thetap = x_bar_t
-    w_theta = wrap_to_pi(theta-math.pi/2) # angle wrapping
-    #print("w_theta:, ", w_theta)
 
-    z_bar_t = np.array([(X_L-x)*math.cos(w_theta) - (Y_L-y)*math.sin(w_theta),
-                        (X_L-x)*math.sin(w_theta) + (Y_L-y)*math.cos(w_theta),
-                         theta], dtype = float)
 
-    H_t = np.array([[ 0, -math.cos(w_theta), 0,  math.sin(w_theta), 0, -math.cos(w_theta)*(Y_L - y) - math.sin(w_theta)*(X_L - x), 0],
-                    [ 0, -math.sin(w_theta), 0, -math.cos(w_theta), 0,  math.cos(w_theta)*(X_L - x) - math.sin(w_theta)*(Y_L - y), 0],
+    w_theta = wrap_to_pi(math.pi/2-theta)
+
+    H_t = np.array([[ 0, -math.cos(w_theta), 0,  math.sin(w_theta), 0,  math.cos(w_theta)*(Y_L - y) + math.sin(w_theta)*(X_L - x), 0],
+                    [ 0, -math.sin(w_theta), 0, -math.cos(w_theta), 0, -math.cos(w_theta)*(X_L - x) + math.sin(w_theta)*(Y_L - y), 0],
                     [ 0,  0,                           0,  0,                           0,  1,                                     0]],
                     dtype = float)
 
@@ -352,8 +349,8 @@ def calc_meas_prediction(x_bar_t):
     """
 
     xd, x, yd, y, thetad, theta, thetap = x_bar_t
-    w_theta = wrap_to_pi(theta-math.pi/2) # angle wrapping
-    #print("w_theta:, ", w_theta)
+
+    w_theta = wrap_to_pi(math.pi/2-theta)
 
     #Steph's group calculated the x and y in the global frame first
     z_bar_t = np.array([(X_L-x)*math.cos(w_theta) - (Y_L-y)*math.sin(w_theta),
@@ -491,9 +488,9 @@ def main():
     # avg_delta = avg_speed*dt
     # for t, in enumerate(time_stamps):
 
-    #     x = state_e_prev[1] + 
+    #     x = state_e_prev[1] +
     #     state_e = np.array([avg_speed,,0,0,0,0,0])
-    #     state_expected[:,t] = 
+    #     state_expected[:,t] =
 
 
 
@@ -539,6 +536,19 @@ def main():
 
     # Plot or print results here
     print("\n\nDone filtering...plotting...")
+
+    plt.figure(0)
+    plt.axis([-5, 15, -15, 5])
+    for t in range(len(time_stamps)):
+        x = state_estimates[1][t]
+        y = state_estimates[3][t]
+        xg = gps_estimates[0][t]
+        yg = gps_estimates[1][t]
+        plt.scatter(x, y, c='r')
+        plt.scatter(xg, yg, c='b')
+        plt.pause(0.005)
+
+    plt.show()
 
     # Plot raw data and estimate
     plt.figure(1)
