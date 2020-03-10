@@ -3,27 +3,26 @@
 % This script calculates our jacobians for motion and mesurement models
 % The expressions were then copy pasted into our python functions
 %% Motion Model/Prediction
-syms x y theta theta_pre v_x v_y v_theta a_xi a_yi dt
-syms x_p y_p theta_p theta_prev_p v_x_p v_y_p v_theta_p
+syms xd x yd y thetad theta theta_prev  a_xi a_yi dt
 syms X_L Y_L;
-state_prev=[v_x_p;
-            x_p;
-            v_y_p;
-            y_p; 
-            v_theta_p
-            theta_p;
-            theta_prev_p];
+state_prev=[xd;
+            x;
+            yd;
+            y; 
+            thetad
+            theta;
+            theta_prev];
 control = [a_xi;
            a_yi];
            
 
-g=[v_x_p + (-a_yi*sin(-theta_p)+a_xi*cos(-theta_p))*dt;
-    x_p + v_x_p*dt ;
-    v_y_p + (a_yi*cos(-theta_p)+ a_xi*sin(-theta_p))*dt;
-    y_p + v_y_p*dt;
-    (theta_p - theta_prev_p)/dt;
-    theta_p+  v_theta_p*dt;
-    theta_p];
+g= [xd + (-a_yi*sin(theta)+a_xi*cos(theta))*dt;
+    x + xd*dt ;
+    yd + (a_yi*cos(theta)+ a_xi*sin(theta))*dt;
+    y + yd*dt;
+    (theta - theta_prev)/dt;
+    theta+  thetad*dt;
+    theta];
 
 %Jacobian wrt to state
 G_x = jacobian(g, state_prev);

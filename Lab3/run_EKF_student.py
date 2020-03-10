@@ -176,9 +176,11 @@ def propogate_state(x_t_prev, u_t):
     xd, x, yd, y, thetad, theta, thetap = x_t_prev
     ux, uy = u_t
 
-    x_bar_t = np.array([[xd + (ux*math.cos(-theta) - uy*math.sin(-theta))* dt],
+    #Steph's group used ax, ay, theta as control input, jacobian of G_X_t was more sparse
+    #ie uy and ux terms were not present in the xd and xy 
+    x_bar_t = np.array([[xd + (ux*math.cos(theta) - uy*math.sin(theta))* dt],
                         [x  +  xd*dt],
-                        [yd + (ux*math.sin(-theta) + uy*math.cos(-theta))* dt],
+                        [yd + (ux*math.sin(theta) + uy*math.cos(theta))* dt],
                         [y  +  yd*dt],
                         [(wrap_to_pi(theta - thetap))/dt],
                         [wrap_to_pi(theta + thetad*dt)],
@@ -204,13 +206,13 @@ def calc_prop_jacobian_x(x_t_prev, u_t):
     xd, x, yd, y, thetad, theta, thetap = x_t_prev
     ux, uy = u_t
 
-    G_x_t = np.array([[  1, 0,  0, 0,  0,  dt*(uy*math.cos(theta) - ux*math.sin(theta)),  0],
-                      [ dt, 1,  0, 0,  0,  0,                                             0],
-                      [  0, 0,  1, 0,  0,  dt*(-ux*math.cos(theta) - uy*math.sin(theta)), 0],
-                      [  0, 0, dt, 1,  0,  0,                                             0],
-                      [  0, 0,  0, 0,  0,  1/dt,                                      -1/dt],
-                      [  0, 0,  0, 0, dt,  1,                                             0],
-                      [  0, 0,  0, 0,  0,  1,                                             0]],
+    G_x_t = np.array([[  1, 0,  0, 0,  0,  dt*(-uy*math.cos(theta) - ux*math.sin(theta)),  0],
+                      [ dt, 1,  0, 0,  0,  0,                                              0],
+                      [  0, 0,  1, 0,  0,  dt*(ux*math.cos(theta) - uy*math.sin(theta)),   0],
+                      [  0, 0, dt, 1,  0,  0,                                              0],
+                      [  0, 0,  0, 0,  0,  1/dt,                                       -1/dt],
+                      [  0, 0,  0, 0, dt,  1,                                              0],
+                      [  0, 0,  0, 0,  0,  1,                                              0]],
                       dtype = float)  # add shape of matrix
     #G_x_t = np.eye(7,dtype = float)
 
@@ -234,13 +236,13 @@ def calc_prop_jacobian_u(x_t_prev, u_t):
     xd, x, yd, y, thetad, theta, thetap = x_t_prev
     ux, uy = u_t
 
-    G_u_t = np.array([[ dt*math.cos(theta),  dt*math.sin(theta)],
-                      [ 0,                                     0],
-                      [ -dt*math.sin(theta), dt*math.cos(theta)],
-                      [ 0,                                     0],
-                      [ 0,                                     0],
-                      [ 0,                                     0],
-                      [ 0,                                     0]],
+    G_u_t = np.array([[ dt*math.cos(theta), -dt*math.sin(theta)],
+                      [ 0,                                    0],
+                      [ dt*math.sin(theta),  dt*math.cos(theta)],
+                      [ 0,                                    0],
+                      [ 0,                                    0],
+                      [ 0,                                    0],
+                      [ 0,                                    0]],
                       dtype = float)  # add shape of matrix
     #G_u_t = np.zeros((7,2), dtype = float)
 
@@ -296,10 +298,15 @@ def calc_meas_jacobian(x_bar_t):
     """
     xd, x, yd, y, thetad, theta, thetap = x_bar_t
     w_theta = wrap_to_pi(theta-math.pi/2) # angle wrapping
+    #print("w_theta:, ", w_theta)
 
-    H_t = np.array([[ 0, -math.cos(w_theta), 0, -math.sin(w_theta), 0,  math.cos(w_theta)*(Y_L - y) - math.sin(w_theta)*(X_L - x), 0],
-                    [ 0,  math.sin(w_theta), 0, -math.cos(w_theta), 0, -math.cos(w_theta)*(X_L - x) - math.sin(w_theta)*(Y_L - y), 0],
-                    [ 0,  0,                           0,  0,                           0,  1,                                                                             0]],
+    z_bar_t = np.array([(X_L-x)*math.cos(w_theta) - (Y_L-y)*math.sin(w_theta),
+                        (X_L-x)*math.sin(w_theta) + (Y_L-y)*math.cos(w_theta),
+                         theta], dtype = float)
+
+    H_t = np.array([[ 0, -math.cos(w_theta), 0,  math.sin(w_theta), 0, -math.cos(w_theta)*(Y_L - y) - math.sin(w_theta)*(X_L - x), 0],
+                    [ 0, -math.sin(w_theta), 0, -math.cos(w_theta), 0,  math.cos(w_theta)*(X_L - x) - math.sin(w_theta)*(Y_L - y), 0],
+                    [ 0,  0,                           0,  0,                           0,  1,                                     0]],
                     dtype = float)
 
     #print("H_t: ", H_t.shape)
@@ -345,12 +352,13 @@ def calc_meas_prediction(x_bar_t):
     """
 
     xd, x, yd, y, thetad, theta, thetap = x_bar_t
-    w_theta = wrap_to_pi(-theta+math.pi/2) # angle wrapping
+    w_theta = wrap_to_pi(theta-math.pi/2) # angle wrapping
     #print("w_theta:, ", w_theta)
 
+    #Steph's group calculated the x and y in the global frame first
     z_bar_t = np.array([(X_L-x)*math.cos(w_theta) - (Y_L-y)*math.sin(w_theta),
                         (X_L-x)*math.sin(w_theta) + (Y_L-y)*math.cos(w_theta),
-                        theta], dtype = float)
+                         theta], dtype = float)
 
     #print("z_bar_t: ", z_bar_t.shape)
     #print("z_bar_t: ", z_bar_t)
@@ -387,6 +395,7 @@ def correction_step(x_bar_t, z_t, sigma_x_bar_t):
 
     #Need to reshape to 1D array for later processing
     x_est_t = x_est_t.reshape((7,))
+    #x_est_t = x_bar_t.reshape((7,))
     #Verify sizes
     #print("x_est_t: ", x_est_t.shape)
     #print("sigma_x_est_t: ",sigma_x_est_t.shape)
@@ -399,7 +408,7 @@ def main():
     """Run a EKF on logged data from IMU and LiDAR moving in a box formation around a landmark"""
 
     filepath = ""
-    filename = "2020_2_26__16_59_7" #"2020_2_26__17_21_59" #
+    filename = "2020_2_26__17_21_59" ##"2020_2_26__16_59_7" #
     data, is_filtered = load_data(filepath + filename)
 
     # Save filtered data so don't have to process unfiltered data everytime
@@ -473,8 +482,20 @@ def main():
     # origin_z = calc_meas_prediction([0,0,0,0,0,3*math.pi/4,0])
     # print(origin_z)#135 degrees Would be weird
 
-    x_bar = propogate_state([0,0,0,0,0,math.pi/2,math.pi/2],[0,0.1])
-    print(x_bar)
+    #Generate expected path expected state
+    # state_expected = np.empty((N, len(time_stamps)))
+    # state_e_prev = np.array([0,0,0,0,0,0,0])
+
+    # time_elapsed = len(time_stamps)*dt
+    # avg_speed = 40.0/time_elapsed
+    # avg_delta = avg_speed*dt
+    # for t, in enumerate(time_stamps):
+
+    #     x = state_e_prev[1] + 
+    #     state_e = np.array([avg_speed,,0,0,0,0,0])
+    #     state_expected[:,t] = 
+
+
 
     #  Run filter over data
     for t, _ in enumerate(time_stamps):
@@ -524,7 +545,7 @@ def main():
     plt.suptitle("EKF Localization: X & Y Measurements")
     #Plot x,y
     T1 = 0
-    T2 = len(time_stamps)
+    T2 = 100#len(time_stamps)
     print(state_predictions[0][T1:T2])
     print(np.mean(state_predictions[0][T1:T2]))
     plt.scatter(state_estimates[1][T1:T2], state_estimates[3][T1:T2])
@@ -532,8 +553,8 @@ def main():
     plt.scatter(state_predictions[1][T1:T2], state_predictions[3][T1:T2])
     plt.xlabel('X [m]')
     plt.ylabel('Y [m]')
-    #plt.xlim([-10, 20])
-    #plt.ylim([-20, 10])
+    plt.xlim([-10, 20])
+    plt.ylim([-20, 10])
 
     plt.show()
 
