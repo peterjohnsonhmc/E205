@@ -6,7 +6,6 @@ Date of Creation: 2/26/20
 Description:
     Extended Kalman Filter implementation to filtering localization estimate
     This code is for teaching purposes for HMC ENGR205 System Simulation Lab 3
-    Student code version with parts omitted.
 """
 
 import csv
@@ -17,12 +16,12 @@ import numpy as np
 import math
 import os.path
 
-HEIGHT_THRESHOLD = 0.0  # meters
-GROUND_HEIGHT_THRESHOLD = -.4  # meters
-dt = 0.1
-X_L = 5.  # Landmark position in global frame
-Y_L = -5.  # meters
-EARTH_RADIUS = 6.3781E6  # meters
+HEIGHT_THRESHOLD = 0.0  		# meters
+GROUND_HEIGHT_THRESHOLD = -.4  	# meters
+dt = 0.1						# timestep seconds					
+X_L = 5.  						# Landmark position in global frame
+Y_L = -5.  						# meters
+EARTH_RADIUS = 6.3781E6  		# meters
 
 
 def load_data(filename):
