@@ -408,6 +408,37 @@ def correction_step(x_bar_t, z_t, sigma_x_bar_t):
     #x_est_t = x_bar_t.reshape((7,))
     return [x_est_t, sigma_x_est_t]
 
+def path_rmse(state_estimates):
+	""" Computes the RMSE error of the distance at each time step from the expected path
+
+		Parameters:
+    	x_estimate      (np.array)    -- array  of state estimates
+
+    	Returns:
+    	rmse  			(float)    	  -- rmse
+    	residuals 		(np.array)	  -- array of residuals   
+	"""
+	x_est = state_estimates[1][:]
+	y_est = state_estimates[3][:]
+	errors = np.empty((len(x_est)))
+	residuals = np.empty((len(x_est)))
+
+	#resid = measured - predicted by segments
+
+	for i in range(len(x_est)):
+		e1 = (y_est[i] - 0)**2
+		e2 = (x_est[i] - 10)**2
+		e3 = (y_est[i] - (-10))**2
+		e4 = (x_est[i] -0)**2
+		sqerror = min(e1,e2,e3,e4)
+		residuals[i] = math.sqrt(sqerror)
+		errors[i] = sqerror
+
+	mean_error = np.mean(errors)
+	rmse = math.sqrt(mean_error)
+
+	return rmse, residuals
+
 
 
 def main():
@@ -544,21 +575,37 @@ def main():
         gps_estimates[:, t] = np.array([x_gps, y_gps])
 
 
-    # Plot or print results here
-    # print("\n\nDone filtering...plotting...")
-    # plt.figure(1)
-    # plt.axis([-5, 15, -15, 5])
-    # for t in range(len(time_stamps)):
-    #     x = state_estimates[1][t]
-    #     y = state_estimates[3][t]
-    #     xg = gps_estimates[0][t]
-    #     yg = gps_estimates[1][t]
-    #     plt.scatter(x, y, c='r')
-    #     plt.scatter(xg, yg, c='b')
-    #     plt.pause(0.0005)
-    # plt.show()
 
-    # Plot raw data and estimate
+    #Plot or print results here
+    print("\n\nDone filtering...plotting...")
+
+    #Expected path
+    pathx = [0,10,10,0,0]
+    pathy = [0,0,-10,-10,0] 
+    time_enum = list(enumerate(time_stamps))
+
+    #RMSE
+    rmse, residuals = path_rmse(state_estimates)
+    print("Expected Path RMSE: ", rmse)
+
+    plt.figure(1)
+    plt.plot(residuals)
+    plt.show()
+
+    plt.figure(1)
+    plt.axis([-5, 15, -15, 5])
+    plt.plot(pathx,pathy)
+    for t in range(len(time_stamps)):
+        x = state_estimates[1][t]
+        y = state_estimates[3][t]
+        xg = gps_estimates[0][t]
+        yg = gps_estimates[1][t]
+        plt.scatter(x, y, c='r')
+        plt.scatter(xg, yg, c='b')
+        plt.pause(0.0005)
+    plt.show()
+
+    #Plot raw data and estimate
     plt.figure(2)
     plt.suptitle("EKF Localization: X & Y Measurements")
     #Plot x,y
@@ -566,9 +613,10 @@ def main():
     T2 = 150#len(time_stamps)
     #print(state_predictions[0][T1:T2])
     #print(np.mean(state_predictions[0][T1:T2]))
-    plt.scatter(state_estimates[1][T1:T2], state_estimates[3][T1:T2])
-    plt.scatter(gps_estimates[0][:],gps_estimates[1][:])
-    plt.scatter(state_predictions[1][T1:T2], state_predictions[3][T1:T2])
+    plt.scatter(state_estimates[1][T1:T2], state_estimates[3][T1:T2], marker = '.')
+    plt.scatter(gps_estimates[0][:],gps_estimates[1][:], marker = '.')
+    plt.scatter(state_predictions[1][T1:T2], state_predictions[3][T1:T2], marker = '.')
+    plt.plot(pathx,pathy)
     plt.xlabel('X [m]')
     plt.ylabel('Y [m]')
     plt.xlim([-10, 20])
@@ -578,8 +626,8 @@ def main():
     plt.figure(3)
     plt.suptitle("EKF Localization: Est &  Meas Yaw")
     #Plot x,y
-    plt.scatter(time_stamps, data["Yaw"])
-    plt.scatter(time_stamps, state_estimates[5][:])
+    plt.scatter(time_enum, data["Yaw"], marker = '.')
+    plt.scatter(time_enum, state_estimates[5][:], marker = '.')
     plt.legend(['Yaw', 'Yaw Estimated'])
     plt.ylim([-math.pi-.2, math.pi+.2])
     plt.show()
@@ -587,8 +635,8 @@ def main():
     plt.figure(4)
     plt.suptitle("EKF Localization: X ")
     #Plot x,y
-    plt.scatter(time_stamps, state_estimates[1][:])
-    plt.scatter(time_stamps, state_predictions[1][:])
+    plt.scatter(time_stamps, state_estimates[1][:],marker = '.')
+    plt.scatter(time_stamps, state_predictions[1][:],marker = '.')
     plt.ylabel('X [m]')
     plt.ylim([-20, 10])
     plt.show()
