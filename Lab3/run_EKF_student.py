@@ -545,9 +545,9 @@ def main():
     plt.suptitle("EKF Localization: X & Y Measurements")
     #Plot x,y
     T1 = 0
-    T2 = 100#len(time_stamps)
-    print(state_predictions[0][T1:T2])
-    print(np.mean(state_predictions[0][T1:T2]))
+    T2 = 200#len(time_stamps)
+    #print(state_predictions[0][T1:T2])
+    #print(np.mean(state_predictions[0][T1:T2]))
     plt.scatter(state_estimates[1][T1:T2], state_estimates[3][T1:T2])
     plt.scatter(gps_estimates[0][:],gps_estimates[1][:])
     plt.scatter(state_predictions[1][T1:T2], state_predictions[3][T1:T2])

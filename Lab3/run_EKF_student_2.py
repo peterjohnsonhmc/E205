@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import math
 import os.path
+import matplotlib.animation as animation
 
 HEIGHT_THRESHOLD = 0.0  # meters
 GROUND_HEIGHT_THRESHOLD = -.4  # meters
@@ -175,9 +176,6 @@ def propogate_state(x_t_prev, u_t):
     #Destructure array
     xd, x, yd, y, thetad, theta, thetap = x_t_prev
     ux, uy, yaw = u_t
-    print(yaw)
-    print(theta)
-    print(thetap)
 
     #Steph's group used ax, ay, theta as control input, jacobian of G_X_t was more sparse
     #ie uy and ux terms were not present in the xd and xy
@@ -239,6 +237,7 @@ def calc_prop_jacobian_u(x_t_prev, u_t):
     xd, x, yd, y, thetad, theta, thetap = x_t_prev
     ux, uy, yaw = u_t
 
+
     G_u_t = np.array([[ dt*math.cos(yaw), -dt*math.sin(yaw),  (-ux*math.sin(yaw) - uy*math.cos(yaw))*dt],
                       [ 0,                 0,                                                         0],
                       [ dt*math.sin(yaw),  dt*math.cos(yaw),   (ux*math.cos(yaw) - uy*math.sin(yaw))*dt],
@@ -269,8 +268,8 @@ def prediction_step(x_t_prev, u_t, sigma_x_t_prev):
     # Covariance matrix of control input
     #NEED TO UPDATE
     #Use something besides zeros
-    #variance for ddx ddy
-    R_t = np.array([[1.8373, 0,      0],
+    #variance for ddx ddy, yaw
+    R_t = np.array([[1.8373, 0,      0],            
                     [0,      1.1991, 0],
                     [0,      0,      0.00058709]],
                     dtype=float)
@@ -340,10 +339,10 @@ def calc_kalman_gain(sigma_x_bar_t, H_t):
 def local_to_global(x_bar_t, z_t):
     xd, x, yd, y, thetad, theta, thetap = x_bar_t
     zx, zy = z_t
-    w_theta = wrap_to_pi(theta-math.pi/2)
+    w_theta = wrap_to_pi(-theta+math.pi/2)
 
-    z_global = np.array([x*math.cos(w_theta) - y*math.sin(w_theta),
-                         x*math.sin(w_theta) + y*math.cos(w_theta)],
+    z_global = np.array([zx*math.cos(w_theta) - zy*math.sin(w_theta),
+                         zx*math.sin(w_theta) + zy*math.cos(w_theta)],
                          dtype = float)
 
     return z_global
@@ -362,7 +361,7 @@ def calc_meas_prediction(x_bar_t):
     xd, x, yd, y, thetad, theta, thetap = x_bar_t
     #print("w_theta:, ", w_theta)
 
-    #Steph's group calculated the x and y in the global frame first
+    #Steph's group calculated the lidar x and y in the global frame first, no rotation necessary
     z_bar_t = np.array([X_L-x,
                         Y_L-y],
                         dtype = float)
@@ -390,10 +389,9 @@ def correction_step(x_bar_t, z_t, sigma_x_bar_t):
     H_t = calc_meas_jacobian(x_bar_t)
     K_t = calc_kalman_gain(sigma_x_bar_t, H_t)
 
-    z_global = local_to_global(x_bar_t, z_t)
     z_bar_t = calc_meas_prediction(x_bar_t)
-    resid = np.array([z_global[0]-z_bar_t[0],
-                      z_global[1]-z_bar_t[1]],
+    resid = np.array([z_t[0]-z_bar_t[0],
+                      z_t[1]-z_bar_t[1]],
                       dtype = float)
     #print("resid = ", resid)
 
@@ -410,6 +408,7 @@ def correction_step(x_bar_t, z_t, sigma_x_bar_t):
 
     #x_est_t = x_bar_t.reshape((7,))
     return [x_est_t, sigma_x_est_t]
+
 
 
 def main():
@@ -456,39 +455,39 @@ def main():
     ##DEBUGGING Functions
     #Test to go around in box clockwise from NW
     # state (x,y,theta) would produce lidar measurements x,y
-    # origin_z = calc_meas_prediction([0,0,0,0,0,0,0])
-    # print("first", origin_z)#0,0,0 Would measure 5,5 in local
+    origin_z = calc_meas_prediction([0,0,0,0,0,0,0])
+    print("first", origin_z)#0,0,0 Would measure 5,-5 in global
 
-    # origin_z = calc_meas_prediction([0,5,0,0,0,0,0])
-    # print(origin_z)#5,0,0Would be 5,0
+    origin_z = calc_meas_prediction([0,5,0,0,0,0,0])
+    print(origin_z)#5,0,0Would be 0,-5
 
-    # origin_z = calc_meas_prediction([0,10,0,0,0,0,0])
-    # print(origin_z)#10,0,0 Would be 5,-5
+    origin_z = calc_meas_prediction([0,10,0,0,0,0,0])
+    print(origin_z)#10,0,0 Would be -5,-5
 
-    # origin_z = calc_meas_prediction([0,10,0,-5,0,0,0])
-    # print(origin_z)#10,-5,0 Would be 0,-5
+    origin_z = calc_meas_prediction([0,10,0,-5,0,0,0])
+    print(origin_z)#10,-5,0 Would be -5,0
 
-    # origin_z = calc_meas_prediction([0,10,0,-10,0,0,0])
-    # print(origin_z)#10,-10,0 Would be -5,-5
+    origin_z = calc_meas_prediction([0,10,0,-10,0,0,0])
+    print(origin_z)#10,-10,0 Would be -5,5
 
-    # origin_z = calc_meas_prediction([0,5,0,-10,0,0,0])
-    # print(origin_z)#5,-10,0 Would be -5,0
+    origin_z = calc_meas_prediction([0,5,0,-10,0,0,0])
+    print(origin_z)#5,-10,0 Would be 0,5
 
-    # origin_z = calc_meas_prediction([0,0,0,-10,0,0,0])
-    # print(origin_z)#0,-10,0#########Would be -5,5
+    origin_z = calc_meas_prediction([0,0,0,-10,0,0,0])
+    print(origin_z)#0,-10,0#########Would be 5,5
 
-    # origin_z = calc_meas_prediction([0,0,0,-5,0,0,0])
-    # print(origin_z)#Would be 0,5
+    origin_z = calc_meas_prediction([0,0,0,-5,0,0,0])
+    print(origin_z)#Would be 5,0
 
-    # #Orientation should affect, need to update these tests, previous test work
-    # origin_z = calc_meas_prediction([0,0,0,0,0,math.pi/2,0])
-    # print(origin_z)# 90 degrees N Would be 5,-5
+    #Orientation should not affect, need to update these tests, previous test work
+    origin_z = calc_meas_prediction([0,0,0,0,0,math.pi/2,0])
+    print(origin_z)# 90 degrees N Would be 5,-5
 
-    # origin_z = calc_meas_prediction([0,0,0,0,0,math.pi,0])
-    # print(origin_z)#180 degrees Would be -5,-5
+    origin_z = calc_meas_prediction([0,0,0,0,0,math.pi,0])
+    print(origin_z)#180 degrees Would be 5,-5
 
-    # origin_z = calc_meas_prediction([0,0,0,0,0,3*math.pi/4,0])
-    # print(origin_z)#135 degrees Would be weird
+    origin_z = calc_meas_prediction([0,0,0,0,0,3*math.pi/4,0])
+    print(origin_z)#135 degrees Would be 5,-5
 
     #Generate expected path expected state
     # state_expected = np.empty((N, len(time_stamps)))
@@ -524,6 +523,8 @@ def main():
         z_t = np.array([[x_lidar[t]], [y_lidar[t]]])
         #print("z_t: ", z_t.shape)
 
+        z_t = local_to_global(state_pred_t, z_t)
+
         # Correction Step
         state_est_t, var_est_t = correction_step(state_pred_t, z_t, var_pred_t)
 
@@ -543,36 +544,56 @@ def main():
                                          lon_origin=lon_origin)
         gps_estimates[:, t] = np.array([x_gps, y_gps])
 
-        if (np.isnan(state_pred_t[0])):
-            print("COVID-19")
-            break
 
     # Plot or print results here
     print("\n\nDone filtering...plotting...")
+    
+    nbPoints = 100
+
+    nanArray = np.array(np.ones(nbPoints))
+    nanArray[:] = np.nan
+    index = range(nbPoints)
+    minimum = np.random.randint(5, size=nbPoints)
+    minimumPlotData = nanArray 
+
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    ax.set_xlim(0, nbPoints)
+    ax.set_ylim(min(minimum), max(minimum))
+    li, = ax.plot(index,minimumPlotData, marker = 'o', linestyle="")
+
+    fig.canvas.draw()
+    plt.show(block=False)
+    for i in range(nbPoints):
+        minimumPlotData[i]=minimum[i]
+        li.set_ydata(minimumPlotData)
+        fig.canvas.draw()
+        time.sleep(1)
 
     # Plot raw data and estimate
     plt.figure(1)
     plt.suptitle("EKF Localization: X & Y Measurements")
     #Plot x,y
     T1 = 0
-    T2 = 100#len(time_stamps)
-    print(state_predictions[0][T1:T2])
-    print(np.mean(state_predictions[0][T1:T2]))
+    T2 = 150#len(time_stamps)
+    #print(state_predictions[0][T1:T2])
+    #print(np.mean(state_predictions[0][T1:T2]))
     plt.scatter(state_estimates[1][T1:T2], state_estimates[3][T1:T2])
     plt.scatter(gps_estimates[0][:],gps_estimates[1][:])
     plt.scatter(state_predictions[1][T1:T2], state_predictions[3][T1:T2])
     plt.xlabel('X [m]')
     plt.ylabel('Y [m]')
-    plt.xlim([-10, 20])
-    plt.ylim([-20, 10])
+    #plt.xlim([-10, 20])
+    #plt.ylim([-20, 10])
 
     plt.show()
 
     plt.figure(2)
     plt.suptitle("EKF Localization: Est &  Meas Yaw")
     #Plot x,y
-    plt.scatter(time_stamps, state_estimates[5][:])
     plt.scatter(time_stamps, data["Yaw"])
+    plt.scatter(time_stamps, state_estimates[5][:])
+    plt.legend(['Yaw', 'Yaw Estimated'])
     plt.ylim([-math.pi-.2, math.pi+.2])
     plt.show()
 
