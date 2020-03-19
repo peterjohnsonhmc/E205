@@ -1,24 +1,24 @@
 %% Lab3 EKF
 % pjohnson@g.hmc.edu pking@g.hmc.edu
-% This script calculates our jacobians for motion and mesurement models
-% The expressions were then copy pasted into our python functions
+% This script calculates variances for our IMU acceleration measurements
 
-dat = readtable('2020_2_26__17_21_59_filtered.csv');
-%dat = table2array(dat);
+data = readtable('2020_2_26__17_21_59_filtered.csv');
+%data = readtable('2020_2_26__16_59_7_filtered.csv');
+
 
 %% 
-X = dat(:,1);
-Y = dat(:,2);
-Z = dat(:,3); 
-T = dat(:,4); 
-Latitude = dat(:,5); 
-Longitude = dat(:,6);
-Yaw = dat(:,7); 
-Pitch = dat(:,8); 
-Roll = dat(:,9); 
-AccelX = dat(:,10); 
-AccelY = dat(:,11); 
-AccelZ = dat(:,12);
+X = table2array(data(:,1));
+Y = table2array(data(:,2));
+Z = table2array(data(:,3)); 
+T = table2array(data(:,4)); 
+Latitude = table2array(data(:,5)); 
+Longitude = table2array(data(:,6));
+Yaw = table2array(data(:,7)); 
+Pitch = table2array(data(:,8)); 
+Roll = table2array(data(:,9)); 
+AccelX = table2array(data(:,10)); 
+AccelY = table2array(data(:,11)); 
+AccelZ = table2array(data(:,12));
 
 k=50;
 AX = movmean(AccelX,k);
@@ -33,7 +33,7 @@ figure(2)
 plot(AY(1:T));
 ylim([-2,2])
 
-%Upon inspection, first 100 values seem to be within the same amount of
+%Upon inspection, first 80 values seem to be within the same amount of
 %noise
 
 varx = var(AccelX(1:80));

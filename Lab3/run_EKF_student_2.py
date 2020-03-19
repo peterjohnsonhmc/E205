@@ -16,12 +16,12 @@ import numpy as np
 import math
 import os.path
 
-HEIGHT_THRESHOLD = 0.0  		# meters
-GROUND_HEIGHT_THRESHOLD = -.4  	# meters
-dt = 0.1						# timestep seconds					
-X_L = 5.  						# Landmark position in global frame
-Y_L = -5.  						# meters
-EARTH_RADIUS = 6.3781E6  		# meters
+HEIGHT_THRESHOLD = 0.0          # meters
+GROUND_HEIGHT_THRESHOLD = -.4      # meters
+dt = 0.1                        # timestep seconds                    
+X_L = 5.                          # Landmark position in global frame
+Y_L = -5.                          # meters
+EARTH_RADIUS = 6.3781E6          # meters
 
 
 def load_data(filename):
@@ -162,7 +162,7 @@ def wrap_to_pi(angle):
 
 def propogate_state(x_t_prev, u_t):
     """Propogate/predict the state based on chosen motion model
-        Use the nonlinear function g
+        Use the nonlinear function g(x_t_prev, u_t)
 
     Parameters:
     x_t_prev (np.array)  -- the previous state estimate
@@ -175,8 +175,7 @@ def propogate_state(x_t_prev, u_t):
     xd, x, yd, y, thetad, theta, thetap = x_t_prev
     ux, uy, yaw = u_t
 
-    #Steph's group used ax, ay, theta as control input, jacobian of G_X_t was more sparse
-    #ie uy and ux terms were not present in the xd and xy
+
     x_bar_t = np.array([[xd + (ux*math.cos(yaw) - uy*math.sin(yaw))* dt],
                         [x  +  xd*dt],
                         [yd + (ux*math.sin(yaw) + uy*math.cos(yaw))* dt],
@@ -185,8 +184,7 @@ def propogate_state(x_t_prev, u_t):
                         [yaw],
                         [theta]], dtype = float)
 
-    #Predict that we are in the same place as last time
-    #x_bar_t = np.array([xd, x, yd, y, thetad, theta, thetap]).reshape(7,1)
+
     #print("x_bar_t: ", x_bar_t.shape)
 
     return x_bar_t
@@ -213,7 +211,6 @@ def calc_prop_jacobian_x(x_t_prev, u_t):
                       [  0, 0,  0, 0,  0,  0,        0],
                       [  0, 0,  0, 0,  0,  1,        0]],
                       dtype = float)  # add shape of matrix
-    #G_x_t = np.eye(7,dtype = float)
 
     #print("G_x_t: ", G_x_t.shape)
 
@@ -244,9 +241,9 @@ def calc_prop_jacobian_u(x_t_prev, u_t):
                       [ 0,                 0,                                                         1],
                       [ 0,                 0,                                                         0]],
                       dtype = float)  # add shape of matrix
-    #G_u_t = np.zeros((7,2), dtype = float)
 
     #print("G_u_t: ", G_u_t.shape)
+
     return G_u_t
 
 
@@ -264,8 +261,6 @@ def prediction_step(x_t_prev, u_t, sigma_x_t_prev):
     """
 
     # Covariance matrix of control input
-    #NEED TO UPDATE
-    #Use something besides zeros
     #variance for ddx ddy, yaw
     R_t = np.array([[1.8373, 0,      0],
                     [0,      1.1991, 0],
@@ -283,8 +278,6 @@ def prediction_step(x_t_prev, u_t, sigma_x_t_prev):
     #print("x_bar_t: ", x_bar_t.shape)
     #print("sigma_x_bar_t: ",sigma_x_bar_t.shape)
 
-    #x_bar_t = x_t_prev.reshape((7,1))
-
     return [x_bar_t, sigma_x_bar_t]
 
 
@@ -298,7 +291,6 @@ def calc_meas_jacobian(x_bar_t):
     H_t (np.array)      -- Jacobian of measurment model
     """
     xd, x, yd, y, thetad, theta, thetap = x_bar_t
-    #print("w_theta:, ", w_theta)
 
     H_t = np.array([[ 0, -1, 0,  0, 0, 0, 0],
                     [ 0,  0, 0, -1, 0, 0, 0]],
@@ -320,9 +312,7 @@ def calc_kalman_gain(sigma_x_bar_t, H_t):
     """
 
     # Covariance matrix of measurments
-    #NEED TO UPDATE
-    #Use real values
-    #x_l, y_l, theta
+    #variance of lidar x, lidar y
     Q_t = np.array([[0.0075**2, 0],
                     [0, 0.0075**2]], dtype = float)
 
@@ -335,6 +325,15 @@ def calc_kalman_gain(sigma_x_bar_t, H_t):
     return K_t
 
 def local_to_global(x_bar_t, z_t):
+    """Rotate the lidar x and y measurements from the lidar frame to the global frame orientation
+
+       Parameters:
+       x_bar_t (np.array)  -- the predicted state
+       z_t     (np.array)  -- the measurement vector in the lidar frame
+
+       Returns:
+       z_global (np.array) -- global orientation measurment vector
+    """    
     xd, x, yd, y, thetad, theta, thetap = x_bar_t
     zx, zy = z_t
     w_theta = wrap_to_pi(-theta+math.pi/2)
@@ -349,17 +348,15 @@ def local_to_global(x_bar_t, z_t):
 def calc_meas_prediction(x_bar_t):
     """Calculate predicted measurement based on the predicted state
         Implements the nonlinear measrument h function
-    Parameters:
-    x_bar_t (np.array)  -- the predicted state
+        Parameters:
+        x_bar_t (np.array)  -- the predicted state
 
-    Returns:
-    z_bar_t (np.array)  -- the predicted measurement
+        Returns:
+        z_bar_t (np.array)  -- the predicted measurement
     """
 
     xd, x, yd, y, thetad, theta, thetap = x_bar_t
-    #print("w_theta:, ", w_theta)
 
-    #Steph's group calculated the lidar x and y in the global frame first, no rotation necessary
     z_bar_t = np.array([X_L-x,
                         Y_L-y],
                         dtype = float)
@@ -407,36 +404,71 @@ def correction_step(x_bar_t, z_t, sigma_x_bar_t):
     #x_est_t = x_bar_t.reshape((7,))
     return [x_est_t, sigma_x_est_t]
 
+def distance(x1,y1,x2,y2):  
+     dist = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)  
+     return dist 
+
+
 def path_rmse(state_estimates):
-	""" Computes the RMSE error of the distance at each time step from the expected path
+    """ Computes the RMSE error of the distance at each time step from the expected path
 
-		Parameters:
-    	x_estimate      (np.array)    -- array  of state estimates
+        Parameters:
+        x_estimate      (np.array)    -- array  of state estimates
 
-    	Returns:
-    	rmse  			(float)    	  -- rmse
-    	residuals 		(np.array)	  -- array of residuals   
-	"""
-	x_est = state_estimates[1][:]
-	y_est = state_estimates[3][:]
-	errors = np.empty((len(x_est)))
-	residuals = np.empty((len(x_est)))
+        Returns:
+        rmse              (float)          -- rmse
+        residuals         (np.array)      -- array of residuals   
+    """
+    x_est = state_estimates[1][:]
+    y_est = state_estimates[3][:]
+    sqerrors = []
+    errors = []
+    residuals = []
+    rmse_time = []
 
-	#resid = measured - predicted by segments
+    #resid = measured - predicted by segments
 
-	for i in range(len(x_est)):
-		e1 = (y_est[i] - 0)**2
-		e2 = (x_est[i] - 10)**2
-		e3 = (y_est[i] - (-10))**2
-		e4 = (x_est[i] -0)**2
-		sqerror = min(e1,e2,e3,e4)
-		residuals[i] = math.sqrt(sqerror)
-		errors[i] = sqerror
+    for i in range(len(x_est)):
+        if (x_est[i]<0 and y_est[i]>0):
+            #Upper left corner
+            resid = distance(x_est[i], y_est[i], 0,0)
+            sqerror = resid**2
 
-	mean_error = np.mean(errors)
-	rmse = math.sqrt(mean_error)
+        elif (x_est[i]>10 and y_est[i]>0):
+            #Upper right coner
+            resid = distance(x_est[i], y_est[i], 10,0)
+            sqerror = resid**2
 
-	return rmse, residuals
+        elif (x_est[i]>10 and y_est[i]<-10):
+            #Lower right coner
+            resid = distance(x_est[i], y_est[i], 10,-10)
+            sqerror = resid**2
+
+        elif (x_est[i]<0 and y_est[i]<-10):
+            #Lower right coner
+            resid = distance(x_est[i], y_est[i], 0,-10)
+            sqerror = resid**2
+
+        else:
+            #General case
+            r1 = (y_est[i] - 0)
+            r2 = (x_est[i] - 10)
+            r3 = (y_est[i] - (-10))
+            r4 = (x_est[i] -0)
+            resid = min(abs(r1),abs(r2),abs(r3),abs(r4))
+        
+        residuals.append(resid) #residuals are basically cte
+        sqerrors.append(resid**2)
+        errors.append(abs(resid))
+        mse = np.mean(sqerrors)
+        rmse = math.sqrt(mse)
+        rmse_time.append(rmse)
+
+    mean_error = np.mean(errors)
+    mse = np.mean(sqerrors)
+    rmse = math.sqrt(mse)
+
+    return rmse, residuals, mean_error, rmse_time
 
 
 
@@ -473,64 +505,19 @@ def main():
     #Start in NW corner
     state_est_t_prev = np.array([0,0,0,0,0,0,0])
     var_est_t_prev = np.identity(N)
+    skip_est_t_prev = np.array([0,0,0,0,0,0,0])
+    vskip_est_t_prev = np.identity(N)
 
     #allocate
     state_predictions = np.empty((N, len(time_stamps)))
-    z_bars = np.empty((2,len(time_stamps)))
     state_estimates = np.empty((N, len(time_stamps)))
+    skipp_estimates = np.empty((N, len(time_stamps)))
     covariance_estimates = np.empty((N, N, len(time_stamps)))
+    covarskipp_estimates = np.empty((N, N, len(time_stamps)))
     gps_estimates = np.empty((2, len(time_stamps)))
 
-    ##DEBUGGING Functions
-    #Test to go around in box clockwise from NW
-    # state (x,y,theta) would produce lidar measurements x,y
-    # origin_z = calc_meas_prediction([0,0,0,0,0,0,0])
-    # print("first", origin_z)#0,0,0 Would measure 5,-5 in global
-    #
-    # origin_z = calc_meas_prediction([0,5,0,0,0,0,0])
-    # print(origin_z)#5,0,0Would be 0,-5
-    #
-    # origin_z = calc_meas_prediction([0,10,0,0,0,0,0])
-    # print(origin_z)#10,0,0 Would be -5,-5
-    #
-    # origin_z = calc_meas_prediction([0,10,0,-5,0,0,0])
-    # print(origin_z)#10,-5,0 Would be -5,0
-    #
-    # origin_z = calc_meas_prediction([0,10,0,-10,0,0,0])
-    # print(origin_z)#10,-10,0 Would be -5,5
-    #
-    # origin_z = calc_meas_prediction([0,5,0,-10,0,0,0])
-    # print(origin_z)#5,-10,0 Would be 0,5
-    #
-    # origin_z = calc_meas_prediction([0,0,0,-10,0,0,0])
-    # print(origin_z)#0,-10,0#########Would be 5,5
-    #
-    # origin_z = calc_meas_prediction([0,0,0,-5,0,0,0])
-    # print(origin_z)#Would be 5,0
-    #
-    # #Orientation should not affect, need to update these tests, previous test work
-    # origin_z = calc_meas_prediction([0,0,0,0,0,math.pi/2,0])
-    # print(origin_z)# 90 degrees N Would be 5,-5
-    #
-    # origin_z = calc_meas_prediction([0,0,0,0,0,math.pi,0])
-    # print(origin_z)#180 degrees Would be 5,-5
-    #
-    # origin_z = calc_meas_prediction([0,0,0,0,0,3*math.pi/4,0])
-    # print(origin_z)#135 degrees Would be 5,-5
-
-    #Generate expected path expected state
-    # state_expected = np.empty((N, len(time_stamps)))
-    # state_e_prev = np.array([0,0,0,0,0,0,0])
-
-    # time_elapsed = len(time_stamps)*dt
-    # avg_speed = 40.0/time_elapsed
-    # avg_delta = avg_speed*dt
-    # for t, in enumerate(time_stamps):
-
-    #     x = state_e_prev[1] +
-    #     state_e = np.array([avg_speed,,0,0,0,0,0])
-    #     state_expected[:,t] =
-
+    #Added functionality to include correction not every time step
+    skip = False
 
 
     #  Run filter over data
@@ -544,28 +531,37 @@ def main():
 
         # Prediction Step
         state_pred_t, var_pred_t = prediction_step(state_est_t_prev, u_t, var_est_t_prev)
-
-        #Adding something silly to test
-        z_bar_t = calc_meas_prediction(state_pred_t)
+        skip_pred_t, vski_pred_t = prediction_step(skip_est_t_prev, u_t, vskip_est_t_prev)
 
         # Get measurement
         z_t = np.array([[x_lidar[t]], [y_lidar[t]]])
         #print("z_t: ", z_t.shape)
-
         z_t = local_to_global(state_pred_t, z_t)
 
         # Correction Step
         state_est_t, var_est_t = correction_step(state_pred_t, z_t, var_pred_t)
+        if skip:
+            skip_est_t, vski_est_t = skip_pred_t, vski_pred_t
+            skip_est_t = skip_est_t.reshape((7,))
+            skip = False
+        else:
+            skip_est_t, vski_est_t = correction_step(skip_pred_t, z_t, vski_pred_t)
+            skip = True
+
 
         #  For clarity sake/teaching purposes, we explicitly update t->(t-1)
         state_est_t_prev = state_est_t
         var_est_t_prev = var_est_t
 
+        skip_est_t_prev = skip_est_t
+        vskip_est_t_prev = vski_est_t
+
         # Log Data
-        z_bars[:, t] = z_bar_t.reshape((2,))
         state_estimates[:, t] = state_est_t
         state_predictions[:, t] = state_pred_t.reshape((7,))
         covariance_estimates[:, :, t] = var_est_t
+        skipp_estimates[:, t] = skip_est_t
+        covarskipp_estimates[:,:, t] = vski_est_t
 
         x_gps, y_gps = convert_gps_to_xy(lat_gps=lat_gps[t],
                                          lon_gps=lon_gps[t],
@@ -578,31 +574,58 @@ def main():
     #Plot or print results here
     print("\n\nDone filtering...plotting...")
 
+
     #Expected path
     pathx = [0,10,10,0,0]
     pathy = [0,0,-10,-10,0] 
-    time_enum = list(enumerate(time_stamps))
+    time_enum =  np.linspace(0,len(time_stamps),len(time_stamps))
+
 
     #RMSE
-    rmse, residuals = path_rmse(state_estimates)
+    rmse, residuals, mean_error, rmse_time = path_rmse(state_estimates)
     print("Expected Path RMSE: ", rmse)
+    print(len(residuals))
+    print(len(time_enum))
+    print(residuals[0])
+    print(time_enum[0])
+    #print(residuals.shape)
+    #print(time_enum.shape)
 
-    plt.figure(1)
-    plt.plot(residuals)
-    plt.show()
+    # plt.figure(1)
+    # plt.plot(time_enum, residuals)
+    # plt.plot([0,len(time_enum)],[rmse, rmse])
+    # #plt.plot([0,len(time_enum)],[mean_error, mean_error])
+    # plt.plot(time_enum, rmse_time)
+    # plt.xlabel('Time Steps')
+    # plt.ylabel('Path Tracking Error [m]')
+    # plt.legend(('Error','Overall RMSE','RMSE over time'))
+    # plt.show()
 
+    # plt.figure(1)
+    # plt.axis([-5, 15, -15, 5])
+    # plt.plot(pathx,pathy)
+    # for t in range(len(time_stamps)):
+    #     x = state_estimates[1][t]
+    #     y = state_estimates[3][t]
+    #     xg = gps_estimates[0][t]
+    #     yg = gps_estimates[1][t]
+    #     plt.scatter(x, y, c='r')
+    #     plt.scatter(xg, yg, c='b')
+    #     plt.pause(0.0005)
+    # plt.show()
+
+    labels = {0: "\u03C3\u2093\u1d65\u00b2 ((m/s)\u00b2)", 1: "\u03C3\u2093\u00b2 (m\u00b2)", 2: "\u03C3\u1d67\u1d65\u00b2 ((m/s)\u00b2)", 3: "\u03C3\u1d67\u00b2 (m\u00b2)", 4: "\u03C3\u209C\u1d65\u00b2 ((rad/s)\u00b2)", 5: "\u03C3\u209C\u00b2 (rad\u00b2)", 6: "\u03C3\u209C\u209A\u00b2 (rad\u00b2)"}
     plt.figure(1)
-    plt.axis([-5, 15, -15, 5])
-    plt.plot(pathx,pathy)
-    for t in range(len(time_stamps)):
-        x = state_estimates[1][t]
-        y = state_estimates[3][t]
-        xg = gps_estimates[0][t]
-        yg = gps_estimates[1][t]
-        plt.scatter(x, y, c='r')
-        plt.scatter(xg, yg, c='b')
-        plt.pause(0.0005)
+    for i in [4,5,6]:
+        plt.subplot(3, 1, i-3)
+        plt.plot(time_enum[3:50], covariance_estimates[i][i][3:50], marker="^", c='b')
+        plt.plot(time_enum[3:50], covarskipp_estimates[i][i][3:50], marker=".", c='r')
+        plt.ylim([.8*min(covariance_estimates[i][i][3:50]), 1.1*max(covarskipp_estimates[i][i][3:50])])
+        plt.ylabel(labels[i])
+        print(i)
+    plt.xlabel("Time Steps")
     plt.show()
+    plt.legend("Correction", "Less Correction")
 
     #Plot raw data and estimate
     plt.figure(2)
@@ -623,12 +646,14 @@ def main():
     plt.show()
 
     plt.figure(3)
-    plt.suptitle("EKF Localization: Est &  Meas Yaw")
-    #Plot x,y
-    plt.scatter(time_enum, data["Yaw"], marker = '.')
+    #plt.suptitle("EKF Localization: Est &  Meas Yaw")
+    #Plot yaw
+    #plt.scatter(time_enum, data["Yaw"], marker = '.')
     plt.scatter(time_enum, state_estimates[5][:], marker = '.')
-    plt.legend(['Yaw', 'Yaw Estimated'])
+    #plt.legend(['Yaw', 'Yaw Estimated'])
     plt.ylim([-math.pi-.2, math.pi+.2])
+    plt.xlabel('Time Steps')
+    plt.ylabel('Yaw Angle [radians]')
     plt.show()
 
     plt.figure(4)
