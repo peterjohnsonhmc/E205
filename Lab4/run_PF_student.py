@@ -455,6 +455,13 @@ def main():
     #  Run filter over data
     for t, _ in enumerate(time_stamps):
 
+        for p in P_prev_t:
+            x = p[1]
+            y = p[3]
+            ax.scatter(x, y, c='r', marker='.')
+        plt.pause(0.00005)
+        res.remove()
+
         # Get control input
         u_t = np.array([[x_ddot[t]],
                         [y_ddot[t]],
@@ -486,11 +493,7 @@ def main():
         #Plot as we go
         ax.scatter(x_gps, y_gps, c='b', marker='.')
 
-        for p in P_t:
-            x = p[1]
-            y = p[3]
-            ax.scatter(x, y, c='r', marker='.')
-            plt.pause(0.00005)
+
 
     plt.show()
 
