@@ -14,13 +14,20 @@ import matplotlib.pyplot as plt
 import numpy as np
 import math
 import os.path
+from scipy.stats import norm, uniform
 
 HEIGHT_THRESHOLD = 0.0          # meters
 GROUND_HEIGHT_THRESHOLD = -.4      # meters
-dt = 0.1                        # timestep seconds                    
+dt = 0.1                        # timestep seconds
 X_L = 5.                          # Landmark position in global frame
 Y_L = -5.                          # meters
 EARTH_RADIUS = 6.3781E6          # meters
+NUM_PARTICLES = 100
+# variances
+VAR_AX = 1.8373
+VAR_AY = 1.1991
+VAR_THETA = 0.00058709
+VAR_LIDAR = 0.0075**2 # this is actually range but works for x and y
 
 
 def load_data(filename):
@@ -159,7 +166,7 @@ def wrap_to_pi(angle):
     return angle
 
 
-def propogate_state(x_t_prev, u_t):
+def propogate_state(p_i_t, u_t):
     """Propogate/predict the state based on chosen motion model
         Use the nonlinear function g(x_t_prev, u_t)
 
@@ -171,180 +178,28 @@ def propogate_state(x_t_prev, u_t):
     x_bar_t (np.array)   -- the predicted state
     """
     #Destructure array
-    xd, x, yd, y, thetad, theta, thetap = x_t_prev
+    xd, x, yd, y, thetad, theta, thetap, w = p_i_t
+
     ux, uy, yaw = u_t
+    ux += np.random.normal(0, np.sqrt(VAR_AX))
+    uy += np.random.normal(0, np.sqrt(VAR_AY))
+    yaw += np.random.normal(0, np.sqrt(VAR_THETA))
 
-
-    x_bar_t = np.array([[xd + (ux*math.cos(yaw) - uy*math.sin(yaw))* dt],
+    p_pred_t = np.array([[xd + (ux*math.cos(yaw) - uy*math.sin(yaw))* dt],
                         [x  +  xd*dt],
                         [yd + (ux*math.sin(yaw) + uy*math.cos(yaw))* dt],
                         [y  +  yd*dt],
-                        [(theta - thetap)/dt],
+                        [wrap_to_pi(theta - thetap)/dt],
                         [yaw],
-                        [theta]], dtype = float)
+                        [theta],
+                        [w]], dtype = float)
 
 
     #print("x_bar_t: ", x_bar_t.shape)
 
-    return x_bar_t
+    return p_pred_t
 
-
-def calc_prop_jacobian_x(x_t_prev, u_t):
-    """Calculate the Jacobian of your motion model with respect to state
-
-    Parameters:
-    x_t_prev (np.array) -- the previous state estimate
-    u_t (np.array)      -- the current control input (really is odometry)
-
-    Returns:
-    G_x_t (np.array)    -- Jacobian of motion model wrt to x
-    """
-    xd, x, yd, y, thetad, theta, thetap = x_t_prev
-    ux, uy, yaw = u_t
-
-    G_x_t = np.array([[  1, 0,  0, 0,  0,  0,        0],
-                      [ dt, 1,  0, 0,  0,  0,        0],
-                      [  0, 0,  1, 0,  0,  0,        0],
-                      [  0, 0, dt, 1,  0,  0,        0],
-                      [  0, 0,  0, 0,  0,  1/dt, -1/dt],
-                      [  0, 0,  0, 0,  0,  0,        0],
-                      [  0, 0,  0, 0,  0,  1,        0]],
-                      dtype = float)  # add shape of matrix
-
-    #print("G_x_t: ", G_x_t.shape)
-
-    return G_x_t
-
-
-def calc_prop_jacobian_u(x_t_prev, u_t):
-    """Calculate the Jacobian of motion model (g) with respect to control input (u)
-
-    Parameters:
-    x_t_prev (np.array)     -- the previous state estimate
-        in order: x' x  y' y theta' theta theta_prev
-    u_t (np.array)          -- the current control input (really is odometry)
-
-    Returns:
-    G_u_t (np.array)        -- Jacobian of motion model wrt to u
-    """
-
-    xd, x, yd, y, thetad, theta, thetap = x_t_prev
-    ux, uy, yaw = u_t
-
-
-    G_u_t = np.array([[ dt*math.cos(yaw), -dt*math.sin(yaw),  (-ux*math.sin(yaw) - uy*math.cos(yaw))*dt],
-                      [ 0,                 0,                                                         0],
-                      [ dt*math.sin(yaw),  dt*math.cos(yaw),   (ux*math.cos(yaw) - uy*math.sin(yaw))*dt],
-                      [ 0,                 0,                                                         0],
-                      [ 0,                 0,                                                         0],
-                      [ 0,                 0,                                                         1],
-                      [ 0,                 0,                                                         0]],
-                      dtype = float)  # add shape of matrix
-
-    #print("G_u_t: ", G_u_t.shape)
-
-    return G_u_t
-
-
-def prediction_step(x_t_prev, u_t, sigma_x_t_prev):
-    """Compute the prediction of EKF
-
-    Parameters:
-    x_t_prev (np.array)         -- the previous state estimate
-    u_t (np.array)              -- the control input
-    sigma_x_t_prev (np.array)   -- the previous variance estimate
-
-    Returns:
-    x_bar_t (np.array)          -- the predicted state estimate of time t
-    sigma_x_bar_t (np.array)    -- the predicted variance estimate of time t
-    """
-
-    # Covariance matrix of control input
-    #variance for ddx ddy, yaw
-    R_t = np.array([[1.8373, 0,      0],
-                    [0,      1.1991, 0],
-                    [0,      0,      0.00058709]],
-                    dtype=float)
-
-    # Jacobians
-    G_x_t = calc_prop_jacobian_x(x_t_prev, u_t)
-    G_u_t = calc_prop_jacobian_u(x_t_prev, u_t)
-
-    x_bar_t = propogate_state(x_t_prev, u_t)
-    sigma_x_bar_t = G_x_t.dot(sigma_x_t_prev).dot(np.transpose(G_x_t)) + G_u_t.dot(R_t).dot(np.transpose(G_u_t))
-
-    #Ensure Covariance is 7x7 matrix - needed to use .dot() operator
-    #print("x_bar_t: ", x_bar_t.shape)
-    #print("sigma_x_bar_t: ",sigma_x_bar_t.shape)
-
-    return [x_bar_t, sigma_x_bar_t]
-
-
-def calc_meas_jacobian(x_bar_t):
-    """Calculate the Jacobian of your measurment model (h) with respect to state
-
-    Parameters:
-    x_bar_t (np.array)  -- the predicted state
-
-    Returns:
-    H_t (np.array)      -- Jacobian of measurment model
-    """
-    xd, x, yd, y, thetad, theta, thetap = x_bar_t
-
-    H_t = np.array([[ 0, -1, 0,  0, 0, 0, 0],
-                    [ 0,  0, 0, -1, 0, 0, 0]],
-                    dtype = float)
-
-    #print("H_t: ", H_t.shape)
-    return H_t
-
-
-def calc_kalman_gain(sigma_x_bar_t, H_t):
-    """Calculate the Kalman Gain
-
-    Parameters:
-    sigma_x_bar_t (np.array)  -- the predicted state covariance matrix
-    H_t (np.array)            -- the measurement Jacobian
-
-    Returns:
-    K_t (np.array)            -- Kalman Gain
-    """
-
-    # Covariance matrix of measurments
-    #variance of lidar x, lidar y
-    Q_t = np.array([[0.0075**2, 0],
-                    [0, 0.0075**2]], dtype = float)
-
-    H_t_T = np.transpose(H_t)
-
-    K_t = sigma_x_bar_t.dot(H_t_T).dot(np.linalg.inv(H_t.dot(sigma_x_bar_t).dot(H_t_T) + Q_t))
-    #Verify Kalman gain is 7x3 to go from measurement 3x1 to state size 7x1
-    #print("Kalman Gain: ", K_t.shape)
-
-    return K_t
-
-def local_to_global(x_bar_t, z_t):
-    """Rotate the lidar x and y measurements from the lidar frame to the global frame orientation
-
-       Parameters:
-       x_bar_t (np.array)  -- the predicted state
-       z_t     (np.array)  -- the measurement vector in the lidar frame
-
-       Returns:
-       z_global (np.array) -- global orientation measurment vector
-    """    
-    xd, x, yd, y, thetad, theta, thetap = x_bar_t
-    zx, zy = z_t
-    w_theta = wrap_to_pi(-theta+math.pi/2)
-
-    z_global = np.array([zx*math.cos(w_theta) + zy*math.sin(w_theta),
-                         -zx*math.sin(w_theta) + zy*math.cos(w_theta)],
-                         dtype = float)
-
-    return z_global
-
-
-def calc_meas_prediction(x_bar_t):
+def calc_meas_prediction(p_i_t):
     """Calculate predicted measurement based on the predicted state
         Implements the nonlinear measrument h function
         Parameters:
@@ -354,7 +209,7 @@ def calc_meas_prediction(x_bar_t):
         z_bar_t (np.array)  -- the predicted measurement
     """
 
-    xd, x, yd, y, thetad, theta, thetap = x_bar_t
+    xd, x, yd, y, thetad, theta, thetap, w = p_i_t
 
     z_bar_t = np.array([X_L-x,
                         Y_L-y],
@@ -366,47 +221,116 @@ def calc_meas_prediction(x_bar_t):
     return z_bar_t
 
 
-def correction_step(x_bar_t, z_t, sigma_x_bar_t):
+def find_weight(p_i_t, z_t):
+    z_x, z_y = z_t
+
+    z_bar_x, z_bar_y = calc_meas_prediction(p_i_t)
+
+    pdf_val = norm(z_bar_x, np.sqrt(VAR_LIDAR)).pdf(z_x)
+    #print("x pdf: %f ", pdf_val)
+    cdf_val = norm(z_bar_x, np.sqrt(VAR_LIDAR)).cdf(z_bar_x + 20*np.sqrt(VAR_LIDAR))
+    #print("x cdf: %f ", cdf_val)
+    w_xt = pdf_val/cdf_val
+
+    pdf_val = norm(z_bar_y, np.sqrt(VAR_LIDAR)).pdf(z_y)
+    #print("y pdf: %f ", pdf_val)
+    cdf_val = norm(z_bar_y, np.sqrt(VAR_LIDAR)).cdf(z_bar_y + 20*np.sqrt(VAR_LIDAR))
+    #print("y cdf: %f ",cdf_val)
+    w_yt = pdf_val/cdf_val
+
+    weight = w_xt*w_yt
+    if (weight == 0):
+        weight = 10e-20
+    return weight
+
+def local_to_global(p_i_t, z_t):
+    """Rotate the lidar x and y measurements from the lidar frame to the global frame orientation
+
+       Parameters:
+       x_bar_t (np.array)  -- the predicted state
+       z_t     (np.array)  -- the measurement vector in the lidar frame
+
+       Returns:
+       z_global (np.array) -- global orientation measurment vector
+    """
+    xd, x, yd, y, thetad, theta, thetap, w = p_i_t
+    zx, zy = z_t
+    w_theta = wrap_to_pi(-theta+math.pi/2)
+
+    z_global = np.array([zx*math.cos(w_theta) + zy*math.sin(w_theta),
+                         -zx*math.sin(w_theta) + zy*math.cos(w_theta)],
+                         dtype = float)
+
+    return z_global
+
+
+
+def prediction_step(P_prev, u_t, z_t):
+    """Compute the prediction of EKF
+
+    Parameters:
+    P_prev (list of np.arrays)  -- previous particles
+    u_t (np.array)              -- the control input
+    z_t (np.array)              -- the measurement
+
+    Returns:
+    P_pred                      -- the predicted particles
+    """
+
+    P_pred = []
+    w_tot = 0
+    # for loop over all of the previous particles
+    for p_prev in P_prev:
+        # find new state given previous particle, odometry + randomness (motion model)
+        p_pred = propogate_state(p_prev, u_t)
+        # Globalize the measurment for each particle
+        z_g_t = local_to_global(p_pred, z_t)
+        # find particle's weight using wt = P(zt | xt)
+        w_t = find_weight(p_pred, z_g_t)
+        w_tot += w_t
+        # add new particle to the current belief
+        p_pred[7] = w_t
+        P_pred.append(p_pred)
+
+    return [P_pred, w_tot]
+
+
+
+def correction_step(P_pred, w_tot):
     """Compute the correction of EKF
 
     Parameters:
-    x_bar_t       (np.array)    -- the predicted state estimate of time t
-    z_t           (np.array)    -- the measured state of time t
-    sigma_x_bar_t (np.array)    -- the predicted variance of time t
+    P_pred    (list of np.array)  -- the predicted particles of time t
+    w_tot     (float)             -- the sum of all the particle weights
 
     Returns:
-    x_est_t       (np.array)    -- the filtered state estimate of time t
-    sigma_x_est_t (np.array)    -- the filtered variance estimate of time t
+    P_corr    (list of np.array)  -- the corrected particles of time t
     """
 
+    P_corr = []
 
-    H_t = calc_meas_jacobian(x_bar_t)
-    K_t = calc_kalman_gain(sigma_x_bar_t, H_t)
+    p0 = P_pred[0]
+    w0 = p0[7]
+    # resampling algorithm
+    for p in P_pred:
+        r = np.random.uniform(0, 1)*w_tot
+        j = 0
+        wsum = w0
+        while (wsum < r):
+            j += 1
+            pj = P_pred[j]
+            wj = pj[7]
+            wsum += wj
 
-    z_bar_t = calc_meas_prediction(x_bar_t)
-    resid = np.array([z_t[0]-z_bar_t[0],
-                      z_t[1]-z_bar_t[1]],
-                      dtype = float)
-    #print("resid = ", resid)
+        p_c = P_pred[j]
+        P_corr.append(p_c)
+
+    return P_corr
 
 
-    x_est_t = x_bar_t + K_t.dot(resid)
-    sigma_x_est_t = (np.eye(7, dtype=float)-K_t.dot(H_t)).dot(sigma_x_bar_t)
-
-    #Need to reshape to 1D array for later processing
-    x_est_t = x_est_t.reshape((7,))
-    #x_est_t = x_bar_t.reshape((7,))
-    #Verify sizes
-    #print("x_est_t: ", x_est_t.shape)
-    #print("sigma_x_est_t: ",sigma_x_est_t.shape)
-
-    #x_est_t = x_bar_t.reshape((7,))
-    return [x_est_t, sigma_x_est_t]
-
-def distance(x1,y1,x2,y2):  
-     dist = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)  
-     return dist 
-
+def distance(x1,y1,x2,y2):
+     dist = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+     return dist
 
 def path_rmse(state_estimates):
     """ Computes the RMSE error of the distance at each time step from the expected path
@@ -416,7 +340,7 @@ def path_rmse(state_estimates):
 
         Returns:
         rmse              (float)          -- rmse
-        residuals         (np.array)      -- array of residuals   
+        residuals         (np.array)      -- array of residuals
     """
     x_est = state_estimates[1][:]
     y_est = state_estimates[3][:]
@@ -455,7 +379,7 @@ def path_rmse(state_estimates):
             r3 = (y_est[i] - (-10))
             r4 = (x_est[i] -0)
             resid = min(abs(r1),abs(r2),abs(r3),abs(r4))
-        
+
         residuals.append(resid) #residuals are basically cte
         sqerrors.append(resid**2)
         errors.append(abs(resid))
@@ -500,23 +424,32 @@ def main():
     lon_origin = lon_gps[0]
 
     #  Initialize filter
-    N = 7 # number of states
+    N = 8 # number of states
     #Start in NW corner
-    state_est_t_prev = np.array([0,0,0,0,0,0,0])
-    var_est_t_prev = np.identity(N)
-    skip_est_t_prev = np.array([0,0,0,0,0,0,0])
-    vskip_est_t_prev = np.identity(N)
+    P_prev_t = []
+    for i in range(0,NUM_PARTICLES):
+        randx = np.random.uniform(-5,15)
+        randy = np.random.uniform(-15,5)
+        randtheta = np.random.uniform(-math.pi,math.pi)
+        p = np.array([0, randx, 0, randy, 0, randtheta, 0, 1/NUM_PARTICLES]) # initialize particles to all have the same weight
+        P_prev_t.append(p)
+
 
     #allocate
-    state_predictions = np.empty((N, len(time_stamps)))
-    state_estimates = np.empty((N, len(time_stamps)))
-    skipp_estimates = np.empty((N, len(time_stamps)))
-    covariance_estimates = np.empty((N, N, len(time_stamps)))
-    covarskipp_estimates = np.empty((N, N, len(time_stamps)))
     gps_estimates = np.empty((2, len(time_stamps)))
 
-    #Added functionality to include correction not every time step
-    skip = False
+    #Expected path
+    pathx = [0,10,10,0,0]
+    pathy = [0,0,-10,-10,0]
+
+    #Initialize animated plot
+    plt.figure(1)
+    fig, ax = plt.subplots(subplot_kw={'aspect': 'equal'})
+    plt.axis([-5, 15, -15, 5])
+    plt.plot(pathx,pathy)
+    ax.set_ylabel("Y position (Global Frame, m)")
+    ax.set_xlabel("X position (Global Frame, m)")
+    ax.legend(["Expected Path", "Estimated Position", "GPS Position"], loc='center right')
 
 
     #  Run filter over data
@@ -528,39 +461,19 @@ def main():
                         [yaw_lidar[t]]])
         #print("u_t: ", u_t.shape)
 
-        # Prediction Step
-        state_pred_t, var_pred_t = prediction_step(state_est_t_prev, u_t, var_est_t_prev)
-        skip_pred_t, vski_pred_t = prediction_step(skip_est_t_prev, u_t, vskip_est_t_prev)
-
         # Get measurement
         z_t = np.array([[x_lidar[t]], [y_lidar[t]]])
         #print("z_t: ", z_t.shape)
-        z_t = local_to_global(state_pred_t, z_t)
+
+        # Prediction Step
+        P_pred_t,  w_tot = prediction_step(P_prev_t, u_t, z_t)
 
         # Correction Step
-        state_est_t, var_est_t = correction_step(state_pred_t, z_t, var_pred_t)
-        if skip:
-            skip_est_t, vski_est_t = skip_pred_t, vski_pred_t
-            skip_est_t = skip_est_t.reshape((7,))
-            skip = False
-        else:
-            skip_est_t, vski_est_t = correction_step(skip_pred_t, z_t, vski_pred_t)
-            skip = True
-
+        P_t = correction_step(P_pred_t, w_tot)
 
         #  For clarity sake/teaching purposes, we explicitly update t->(t-1)
-        state_est_t_prev = state_est_t
-        var_est_t_prev = var_est_t
+        P_prev_t = P_t
 
-        skip_est_t_prev = skip_est_t
-        vskip_est_t_prev = vski_est_t
-
-        # Log Data
-        state_estimates[:, t] = state_est_t
-        state_predictions[:, t] = state_pred_t.reshape((7,))
-        covariance_estimates[:, :, t] = var_est_t
-        skipp_estimates[:, t] = skip_est_t
-        covarskipp_estimates[:,:, t] = vski_est_t
 
         x_gps, y_gps = convert_gps_to_xy(lat_gps=lat_gps[t],
                                          lon_gps=lon_gps[t],
@@ -570,140 +483,19 @@ def main():
 
 
 
-    #Plot or print results here
-    print("\n\nDone filtering...plotting...")
+        #Plot as we go
+        ax.scatter(x_gps, y_gps, c='b', marker='.')
 
+        for p in P_t:
+            x = p[1]
+            y = p[3]
+            ax.scatter(x, y, c='r', marker='.')
+            plt.pause(0.00005)
 
-    #Expected path
-    pathx = [0,10,10,0,0]
-    pathy = [0,0,-10,-10,0] 
-    time_enum =  np.linspace(0,len(time_stamps),len(time_stamps))
-
-
-    #RMSE
-    rmse, residuals, mean_error, rmse_time = path_rmse(state_estimates)
-    print("Expected Path RMSE: ", rmse)
-    print(len(residuals))
-    print(len(time_enum))
-    print(residuals[0])
-    print(time_enum[0])
-    #print(residuals.shape)
-    #print(time_enum.shape)
-
-    # plt.figure(1)
-    # plt.plot(time_enum, residuals)
-    # plt.plot([0,len(time_enum)],[rmse, rmse])
-    # #plt.plot([0,len(time_enum)],[mean_error, mean_error])
-    # plt.plot(time_enum, rmse_time)
-    # plt.xlabel('Time Steps')
-    # plt.ylabel('Path Tracking Error [m]')
-    # plt.legend(('Error','Overall RMSE','RMSE over time'))
-    # plt.show()
-
-    # plt.figure(1)
-    # plt.axis([-5, 15, -15, 5])
-    # plt.plot(pathx,pathy)
-    # for t in range(len(time_stamps)):
-    #     x = state_estimates[1][t]
-    #     y = state_estimates[3][t]
-    #     xg = gps_estimates[0][t]
-    #     yg = gps_estimates[1][t]
-    #     plt.scatter(x, y, c='r')
-    #     plt.scatter(xg, yg, c='b')
-    #     plt.pause(0.0005)
-    # plt.show()
-
-    labels = {0: "\u03C3\u2093\u1d65\u00b2 ((m/s)\u00b2)", 1: "\u03C3\u2093\u00b2 (m\u00b2)", 2: "\u03C3\u1d67\u1d65\u00b2 ((m/s)\u00b2)", 3: "\u03C3\u1d67\u00b2 (m\u00b2)", 4: "\u03C3\u209C\u1d65\u00b2 ((rad/s)\u00b2)", 5: "\u03C3\u209C\u00b2 (rad\u00b2)", 6: "\u03C3\u209C\u209A\u00b2 (rad\u00b2)"}
-    plt.figure(1)
-    for i in [4,5,6]:
-        plt.subplot(3, 1, i-3)
-        plt.plot(time_enum[3:50], covariance_estimates[i][i][3:50], marker="^", c='b')
-        plt.plot(time_enum[3:50], covarskipp_estimates[i][i][3:50], marker=".", c='r')
-        plt.ylim([.8*min(covariance_estimates[i][i][3:50]), 1.1*max(covarskipp_estimates[i][i][3:50])])
-        plt.ylabel(labels[i])
-        print(i)
-    plt.xlabel("Time Steps")
-    plt.show()
-    plt.legend("Correction", "Less Correction")
-
-    #Plot raw data and estimate
-    plt.figure(2)
-    plt.suptitle("EKF Localization: X & Y Measurements")
-    #Plot x,y
-    T1 = 0
-    T2 = 150#len(time_stamps)
-    #print(state_predictions[0][T1:T2])
-    #print(np.mean(state_predictions[0][T1:T2]))
-    plt.scatter(state_estimates[1][T1:T2], state_estimates[3][T1:T2], marker = '.')
-    plt.scatter(gps_estimates[0][:],gps_estimates[1][:], marker = '.')
-    plt.scatter(state_predictions[1][T1:T2], state_predictions[3][T1:T2], marker = '.')
-    plt.plot(pathx,pathy)
-    plt.xlabel('X [m]')
-    plt.ylabel('Y [m]')
-    plt.xlim([-10, 20])
-    plt.ylim([-20, 10])
-    plt.show()
-
-    plt.figure(3)
-    #plt.suptitle("EKF Localization: Est &  Meas Yaw")
-    #Plot yaw
-    #plt.scatter(time_enum, data["Yaw"], marker = '.')
-    plt.scatter(time_enum, state_estimates[5][:], marker = '.')
-    #plt.legend(['Yaw', 'Yaw Estimated'])
-    plt.ylim([-math.pi-.2, math.pi+.2])
-    plt.xlabel('Time Steps')
-    plt.ylabel('Yaw Angle [radians]')
-    plt.show()
-
-    plt.figure(4)
-    plt.suptitle("EKF Localization: X ")
-    #Plot x,y
-    plt.scatter(time_stamps, state_estimates[1][:],marker = '.')
-    plt.scatter(time_stamps, state_predictions[1][:],marker = '.')
-    plt.ylabel('X [m]')
-    plt.ylim([-20, 10])
-    plt.show()
-
-    plt.figure(5)
-    plt.suptitle("EKF Localization: Y ")
-    #Plot x,y
-    plt.scatter(time_stamps, state_estimates[3][:])
-    plt.scatter(time_stamps, state_predictions[3][:])
-    plt.ylabel('Y [m]')
-    plt.ylim([-20, 10])
-    plt.show()
-
-    plt.figure(6)
-    plt.suptitle("EKF Localization: Z_bar_t x ")
-    #Plot x,y
-    plt.scatter(time_stamps, z_bars[0][:])
-    plt.scatter(time_stamps, x_lidar[:])
-    plt.ylabel('Xmeasbar [m]')
-    plt.ylim([0, 10])
-    plt.show()
-
-    plt.figure(7)
-    plt.suptitle("EKF Localization: Z_bar_t y ")
-    #Plot x,y
-    plt.scatter(time_stamps, z_bars[1][:])
-    plt.scatter(time_stamps, y_lidar[:])
-    plt.ylabel('Ymeasbar [m]')
-    plt.ylim([-10, 10])
-    plt.show()
-
-    plt.figure(8)
-    plt.suptitle("V_x")
-    plt.scatter(time_stamps, state_estimates[0][:])
-    plt.show()
-
-    plt.figure(9)
-    plt.suptitle("V_y")
-    plt.scatter(time_stamps, state_estimates[2][:])
     plt.show()
 
 
-    print("Exiting...")
-
+    print("Done plotting, exiting")
     return 0
 
 
