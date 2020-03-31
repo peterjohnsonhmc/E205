@@ -22,7 +22,7 @@ dt = 0.1                        # timestep seconds
 X_L = 5.                          # Landmark position in global frame
 Y_L = -5.                          # meters
 EARTH_RADIUS = 6.3781E6          # meters
-NUM_PARTICLES = 100
+NUM_PARTICLES = 1000
 # variances
 VAR_AX = 1.8373
 VAR_AY = 1.1991
@@ -446,7 +446,6 @@ def main():
     plt.figure(1)
     fig, ax = plt.subplots(subplot_kw={'aspect': 'equal'})
     plt.axis([-5, 15, -15, 5])
-    plt.plot(pathx,pathy)
     ax.set_ylabel("Y position (Global Frame, m)")
     ax.set_xlabel("X position (Global Frame, m)")
     ax.legend(["Expected Path", "Estimated Position", "GPS Position"], loc='center right')
@@ -454,13 +453,19 @@ def main():
 
     #  Run filter over data
     for t, _ in enumerate(time_stamps):
-
+        x_gps, y_gps = convert_gps_to_xy(lat_gps=lat_gps[t],
+                                 lon_gps=lon_gps[t],
+                                 lat_origin=lat_origin,
+                                 lon_origin=lon_origin)
+        plt.axis([-5, 15, -15, 5])
+        plt.plot(pathx,pathy)
         for p in P_prev_t:
             x = p[1]
             y = p[3]
             ax.scatter(x, y, c='r', marker='.')
-        plt.pause(0.00005)
-        res.remove()
+        plt.scatter(x_gps, y_gps, c='b', marker='.')
+        plt.pause(0.00001)
+        ax.clear()
 
         # Get control input
         u_t = np.array([[x_ddot[t]],
@@ -480,19 +485,6 @@ def main():
 
         #  For clarity sake/teaching purposes, we explicitly update t->(t-1)
         P_prev_t = P_t
-
-
-        x_gps, y_gps = convert_gps_to_xy(lat_gps=lat_gps[t],
-                                         lon_gps=lon_gps[t],
-                                         lat_origin=lat_origin,
-                                         lon_origin=lon_origin)
-        gps_estimates[:, t] = np.array([x_gps, y_gps])
-
-
-
-        #Plot as we go
-        ax.scatter(x_gps, y_gps, c='b', marker='.')
-
 
 
     plt.show()
