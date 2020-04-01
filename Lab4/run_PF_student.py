@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import math
 import os.path
+import scipy as sp
 from scipy.stats import norm, uniform
 
 HEIGHT_THRESHOLD = 0.0          # meters
@@ -27,7 +28,7 @@ NUM_PARTICLES = 1000
 VAR_AX = 1.8373
 VAR_AY = 1.1991
 VAR_THETA = 0.00058709
-VAR_LIDAR = 0.0075**2 # this is actually range but works for x and y
+VAR_LIDAR = .0075**2 #0.0075**2 # this is actually range but works for x and y
 
 PRINTING = False
 
@@ -40,7 +41,7 @@ def load_data(filename):
 
     Returns:
     data (dict)     -- the logged data with data categories as keys
-                       and values list of floats
+                       and values list of np.doubles
     """
     is_filtered = False
     if os.path.isfile(filename + "_filtered.csv"):
@@ -64,7 +65,7 @@ def load_data(filename):
         for h, element in zip(header, row):
             # If got a bad value just use the previous value
             try:
-                data[h].append(float(element))
+                data[h].append(np.double(element))
             except ValueError:
                 data[h].append(data[h][-1])
                 f_log.write(str(row_num) + "\n")
@@ -136,14 +137,14 @@ def convert_gps_to_xy(lat_gps, lon_gps, lat_origin, lon_origin):
     """Convert gps coordinates to cartesian with equirectangular projection
 
     Parameters:
-    lat_gps     (float)    -- latitude coordinate
-    lon_gps     (float)    -- longitude coordinate
-    lat_origin  (float)    -- latitude coordinate of your chosen origin
-    lon_origin  (float)    -- longitude coordinate of your chosen origin
+    lat_gps     (np.double)    -- latitude coordinate
+    lon_gps     (np.double)    -- longitude coordinate
+    lat_origin  (np.double)    -- latitude coordinate of your chosen origin
+    lon_origin  (np.double)    -- longitude coordinate of your chosen origin
 
     Returns:
-    x_gps (float)          -- the converted x coordinate
-    y_gps (float)          -- the converted y coordinate
+    x_gps (np.double)          -- the converted x coordinate
+    y_gps (np.double)          -- the converted y coordinate
     """
     x_gps = EARTH_RADIUS*(math.pi/180.)*(lon_gps - lon_origin)*math.cos((math.pi/180.)*lat_origin)
     y_gps = EARTH_RADIUS*(math.pi/180.)*(lat_gps - lat_origin)
@@ -155,10 +156,10 @@ def wrap_to_pi(angle):
     """Wrap angle data in radians to [-pi, pi]
 
     Parameters:
-    angle (float)   -- unwrapped angle
+    angle (np.double)   -- unwrapped angle
 
     Returns:
-    angle (float)   -- wrapped angle
+    angle (np.double)   -- wrapped angle
     """
     while angle >= math.pi:
         angle -= 2*math.pi
@@ -194,7 +195,7 @@ def propogate_state(p_i_t, u_t):
                         wrap_to_pi(theta - thetap)/dt,
                         yaw,
                         theta,
-                        w], dtype = float)
+                        w], dtype = np.double)
 
 
     #print("x_bar_t: ", x_bar_t.shape)
@@ -215,13 +216,17 @@ def calc_meas_prediction(p_i_t):
 
     z_bar_t = np.array([X_L-x,
                         Y_L-y],
-                        dtype = float)
+                        dtype = np.double)
 
     #print("z_bar_t: ", z_bar_t.shape)
     #print("z_bar_t: ", z_bar_t)
 
     return z_bar_t
 
+def longpdf(mu, var, x):
+    const = sp.longdouble(1.0/np.sqrt(2*math.pi*var))
+    exponent = sp.longdouble(-0.5*((x-mu)**2)/var)
+    return sp.longdouble(const*np.exp(exponent))
 
 def find_weight(p_i_t, z_t):
     z_x, z_y = z_t
@@ -233,26 +238,30 @@ def find_weight(p_i_t, z_t):
         print("z_bar_x: ", z_bar_x)
         print("z_bar_y: ", z_bar_y)
 
-    pdf_val = norm(z_bar_x, np.sqrt(VAR_LIDAR)).pdf(z_x)
+    #pdf_val = norm(z_bar_x, np.sqrt(VAR_LIDAR)).pdf(z_x)
+    pdf_val = longpdf(z_bar_x, VAR_LIDAR, z_x)
     #print("x pdf: %f ", pdf_val)
-    cdf_val = norm(z_bar_x, np.sqrt(VAR_LIDAR)).cdf(z_bar_x + 20*np.sqrt(VAR_LIDAR))
+    #cdf_val = norm(z_bar_x, np.sqrt(VAR_LIDAR)).cdf(z_bar_x + 20*np.sqrt(VAR_LIDAR))
     #print("x cdf: %f ", cdf_val)
-    w_xt = pdf_val/cdf_val
+    w_xt = sp.longdouble(pdf_val)
 
-    pdf_val = norm(z_bar_y, np.sqrt(VAR_LIDAR)).pdf(z_y)
+    #pdf_val = norm(z_bar_y, np.sqrt(VAR_LIDAR)).pdf(z_y)
+    pdf_val = longpdf(z_bar_y, VAR_LIDAR, z_y)
     #print("y pdf: %f ", pdf_val)
-    cdf_val = norm(z_bar_y, np.sqrt(VAR_LIDAR)).cdf(z_bar_y + 20*np.sqrt(VAR_LIDAR))
+    #cdf_val = norm(z_bar_y, np.sqrt(VAR_LIDAR)).cdf(z_bar_y + 20*np.sqrt(VAR_LIDAR))
     #print("y cdf: %f ",cdf_val)
-    w_yt = pdf_val/cdf_val
+    w_yt = sp.longdouble(pdf_val)
 
     if (PRINTING):
         print("w_yt: ", w_yt)
         print("w_xt: ", w_xt)
 
-    weight = w_xt*w_yt
-    if (weight == 0.0):
-        weight = 10e-20
-    return weight
+    if (w_yt == 0.0):
+        w_yt = 10e-20
+    if (w_xt == 0.0):
+        w_xt = 10e-20
+
+    return sp.longdouble(w_xt*w_yt)
 
 def local_to_global(p_i_t, z_t):
     """Rotate the lidar x and y measurements from the lidar frame to the global frame orientation
@@ -270,7 +279,7 @@ def local_to_global(p_i_t, z_t):
 
     z_global = np.array([zx*math.cos(w_theta) + zy*math.sin(w_theta),
                          -zx*math.sin(w_theta) + zy*math.cos(w_theta)],
-                         dtype = float)
+                         dtype = np.double)
 
     return z_global
 
@@ -314,7 +323,7 @@ def correction_step(P_pred, w_tot):
 
     Parameters:
     P_pred    (list of np.array)  -- the predicted particles of time t
-    w_tot     (float)             -- the sum of all the particle weights
+    w_tot     (np.double)             -- the sum of all the particle weights
 
     Returns:
     P_corr    (list of np.array)  -- the corrected particles of time t
@@ -358,7 +367,7 @@ def path_rmse(state_estimates):
         x_estimate      (np.array)    -- array  of state estimates
 
         Returns:
-        rmse              (float)          -- rmse
+        rmse              (np.double)          -- rmse
         residuals         (np.array)      -- array of residuals
     """
     x_est = state_estimates[1][:]
@@ -452,7 +461,8 @@ def main():
         randx = np.random.uniform(-5,15)
         randy = np.random.uniform(-15,5)
         randtheta = np.random.uniform(-math.pi,math.pi)
-        p = np.array([0, randx, 0, randy, 0, randtheta, 0, 1/NUM_PARTICLES]) # initialize particles to all have the same weight
+        #p = np.array([0, randx, 0, randy, 0, randtheta, 0, 1/NUM_PARTICLES], dtype = np.double) # initialize particles to all have the same weight
+        p = np.array([0, 0, 0, 0, 0, 0, 0, 1/NUM_PARTICLES], dtype = np.double) # known start
         p.reshape((8,))
         P_prev_t.append(p)
 
@@ -478,8 +488,8 @@ def main():
                                  lon_gps=lon_gps[t],
                                  lat_origin=lat_origin,
                                  lon_origin=lon_origin)
-        plt.axis([-15, 25, -25, 15])
-        #plt.axis([-5, 15, -15, 5])
+        #plt.axis([-15, 25, -25, 15])
+        plt.axis([-5, 15, -15, 5])
         plt.plot(pathx,pathy)
         for p in P_prev_t:
             x = p[1]
