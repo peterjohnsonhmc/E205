@@ -29,6 +29,8 @@ VAR_AY = 1.1991
 VAR_THETA = 0.00058709
 VAR_LIDAR = 0.0075**2 # this is actually range but works for x and y
 
+PRINTING = False
+
 
 def load_data(filename):
     """Load data from the csv log
@@ -185,14 +187,14 @@ def propogate_state(p_i_t, u_t):
     uy += np.random.normal(0, np.sqrt(VAR_AY))
     yaw += np.random.normal(0, np.sqrt(VAR_THETA))
 
-    p_pred_t = np.array([[xd + (ux*math.cos(yaw) - uy*math.sin(yaw))* dt],
-                        [x  +  xd*dt],
-                        [yd + (ux*math.sin(yaw) + uy*math.cos(yaw))* dt],
-                        [y  +  yd*dt],
-                        [wrap_to_pi(theta - thetap)/dt],
-                        [yaw],
-                        [theta],
-                        [w]], dtype = float)
+    p_pred_t = np.array([xd + (ux*math.cos(yaw) - uy*math.sin(yaw))* dt,
+                        x  +  xd*dt,
+                        yd + (ux*math.sin(yaw) + uy*math.cos(yaw))* dt,
+                        y  +  yd*dt,
+                        wrap_to_pi(theta - thetap)/dt,
+                        yaw,
+                        theta,
+                        w], dtype = float)
 
 
     #print("x_bar_t: ", x_bar_t.shape)
@@ -225,6 +227,11 @@ def find_weight(p_i_t, z_t):
     z_x, z_y = z_t
 
     z_bar_x, z_bar_y = calc_meas_prediction(p_i_t)
+    if (PRINTING):
+        print("z_x: ", z_x)
+        print("z_y: ", z_y)
+        print("z_bar_x: ", z_bar_x)
+        print("z_bar_y: ", z_bar_y)
 
     pdf_val = norm(z_bar_x, np.sqrt(VAR_LIDAR)).pdf(z_x)
     #print("x pdf: %f ", pdf_val)
@@ -238,8 +245,12 @@ def find_weight(p_i_t, z_t):
     #print("y cdf: %f ",cdf_val)
     w_yt = pdf_val/cdf_val
 
+    if (PRINTING):
+        print("w_yt: ", w_yt)
+        print("w_xt: ", w_xt)
+
     weight = w_xt*w_yt
-    if (weight == 0):
+    if (weight == 0.0):
         weight = 10e-20
     return weight
 
@@ -290,7 +301,9 @@ def prediction_step(P_prev, u_t, z_t):
         w_tot += w_t
         # add new particle to the current belief
         p_pred[7] = w_t
+        p_pred.reshape((8,))
         P_pred.append(p_pred)
+
 
     return [P_pred, w_tot]
 
@@ -306,23 +319,29 @@ def correction_step(P_pred, w_tot):
     Returns:
     P_corr    (list of np.array)  -- the corrected particles of time t
     """
+    if (PRINTING):
+        print("RESAMPLING")
+        for p in P_pred:
+            print("x: ", p[1], "   y: ", p[3], "   weight: ", p[7])
 
     P_corr = []
 
     p0 = P_pred[0]
-    w0 = p0[7]
+    w0 = p0[7].copy()
     # resampling algorithm
     for p in P_pred:
         r = np.random.uniform(0, 1)*w_tot
         j = 0
-        wsum = w0
+        wsum = w0.copy()
         while (wsum < r):
             j += 1
-            pj = P_pred[j]
-            wj = pj[7]
-            wsum += wj
+            p_j = P_pred[j]
+            w_j = p_j[7].copy()
+            wsum += w_j
 
         p_c = P_pred[j]
+        p_c.reshape((8,))
+        #print(p_c)
         P_corr.append(p_c)
 
     return P_corr
@@ -398,6 +417,8 @@ def path_rmse(state_estimates):
 def main():
     """Run a EKF on logged data from IMU and LiDAR moving in a box formation around a landmark"""
 
+    np.random.seed(10)
+
     filepath = ""
     filename =  "2020_2_26__16_59_7" #"2020_2_26__17_21_59"
     data, is_filtered = load_data(filepath + filename)
@@ -432,8 +453,8 @@ def main():
         randy = np.random.uniform(-15,5)
         randtheta = np.random.uniform(-math.pi,math.pi)
         p = np.array([0, randx, 0, randy, 0, randtheta, 0, 1/NUM_PARTICLES]) # initialize particles to all have the same weight
+        p.reshape((8,))
         P_prev_t.append(p)
-
 
     #allocate
     gps_estimates = np.empty((2, len(time_stamps)))
@@ -457,7 +478,8 @@ def main():
                                  lon_gps=lon_gps[t],
                                  lat_origin=lat_origin,
                                  lon_origin=lon_origin)
-        plt.axis([-5, 15, -15, 5])
+        plt.axis([-15, 25, -25, 15])
+        #plt.axis([-5, 15, -15, 5])
         plt.plot(pathx,pathy)
         for p in P_prev_t:
             x = p[1]
@@ -467,14 +489,19 @@ def main():
         plt.pause(0.00001)
         ax.clear()
 
+        if (PRINTING):
+            print("Time Step: %d", t)
+            for p in P_prev_t:
+                print("x: ", p[1], "   y: ", p[3], "   weight: ", p[7])
+
         # Get control input
-        u_t = np.array([[x_ddot[t]],
-                        [y_ddot[t]],
-                        [yaw_lidar[t]]])
+        u_t = np.array([x_ddot[t],
+                        y_ddot[t],
+                        yaw_lidar[t]])
         #print("u_t: ", u_t.shape)
 
         # Get measurement
-        z_t = np.array([[x_lidar[t]], [y_lidar[t]]])
+        z_t = np.array([x_lidar[t], y_lidar[t]])
         #print("z_t: ", z_t.shape)
 
         # Prediction Step
