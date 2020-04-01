@@ -16,6 +16,7 @@ import math
 import os.path
 import scipy as sp
 from scipy.stats import norm, uniform
+from numpy import linalg as la
 
 HEIGHT_THRESHOLD = 0.0          # meters
 GROUND_HEIGHT_THRESHOLD = -.4      # meters
@@ -23,12 +24,12 @@ dt = 0.1                        # timestep seconds
 X_L = 5.                          # Landmark position in global frame
 Y_L = -5.                          # meters
 EARTH_RADIUS = 6.3781E6          # meters
-NUM_PARTICLES = 1000
+NUM_PARTICLES = 300
 # variances
 VAR_AX = 1.8373
 VAR_AY = 1.1991
 VAR_THETA = 0.00058709
-VAR_LIDAR = .0075**2 #0.0075**2 # this is actually range but works for x and y
+VAR_LIDAR = .01 #0.0075**2 # this is actually range but works for x and y
 
 PRINTING = False
 
@@ -228,29 +229,26 @@ def longpdf(mu, var, x):
     exponent = sp.longdouble(-0.5*((x-mu)**2)/var)
     return sp.longdouble(const*np.exp(exponent))
 
-def find_weight(p_i_t, z_t):
+def find_weight(p_i_t, z_t, u_t):
     z_x, z_y = z_t
+    _, _, u_theta = u_t
 
     z_bar_x, z_bar_y = calc_meas_prediction(p_i_t)
+    _, _, _, _, _, theta, _, _ = p_i_t
     if (PRINTING):
         print("z_x: ", z_x)
         print("z_y: ", z_y)
         print("z_bar_x: ", z_bar_x)
         print("z_bar_y: ", z_bar_y)
 
-    #pdf_val = norm(z_bar_x, np.sqrt(VAR_LIDAR)).pdf(z_x)
     pdf_val = longpdf(z_bar_x, VAR_LIDAR, z_x)
-    #print("x pdf: %f ", pdf_val)
-    #cdf_val = norm(z_bar_x, np.sqrt(VAR_LIDAR)).cdf(z_bar_x + 20*np.sqrt(VAR_LIDAR))
-    #print("x cdf: %f ", cdf_val)
     w_xt = sp.longdouble(pdf_val)
 
-    #pdf_val = norm(z_bar_y, np.sqrt(VAR_LIDAR)).pdf(z_y)
     pdf_val = longpdf(z_bar_y, VAR_LIDAR, z_y)
-    #print("y pdf: %f ", pdf_val)
-    #cdf_val = norm(z_bar_y, np.sqrt(VAR_LIDAR)).cdf(z_bar_y + 20*np.sqrt(VAR_LIDAR))
-    #print("y cdf: %f ",cdf_val)
     w_yt = sp.longdouble(pdf_val)
+
+    pdf_val = longpdf(u_theta, VAR_THETA, theta)
+    w_theta = sp.longdouble(pdf_val)
 
     if (PRINTING):
         print("w_yt: ", w_yt)
@@ -260,8 +258,10 @@ def find_weight(p_i_t, z_t):
         w_yt = 10e-20
     if (w_xt == 0.0):
         w_xt = 10e-20
+    if (w_theta == 0.0):
+        w_theta = 10e-20
 
-    return sp.longdouble(w_xt*w_yt)
+    return sp.longdouble(w_xt*w_yt*w_theta)
 
 def local_to_global(p_i_t, z_t):
     """Rotate the lidar x and y measurements from the lidar frame to the global frame orientation
@@ -306,7 +306,7 @@ def prediction_step(P_prev, u_t, z_t):
         # Globalize the measurment for each particle
         z_g_t = local_to_global(p_pred, z_t)
         # find particle's weight using wt = P(zt | xt)
-        w_t = find_weight(p_pred, z_g_t)
+        w_t = find_weight(p_pred, z_g_t, u_t)
         w_tot += w_t
         # add new particle to the current belief
         p_pred[7] = w_t
@@ -344,6 +344,8 @@ def correction_step(P_pred, w_tot):
         wsum = w0.copy()
         while (wsum < r):
             j += 1
+            if (j == NUM_PARTICLES-1):
+                break
             p_j = P_pred[j]
             w_j = p_j[7].copy()
             wsum += w_j
@@ -359,6 +361,46 @@ def correction_step(P_pred, w_tot):
 def distance(x1,y1,x2,y2):
      dist = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
      return dist
+
+def subtractive_clustering(P_t):
+    ra = 3*np.sqrt(VAR_LIDAR) # neighborhood radius based on 99% confidence, which is 3 stdev
+    pot = []
+    maxpot = 0
+    maxindex = 0
+    centroids = []
+    for i in range(0, NUM_PARTICLES):
+        newpot = 0
+        for j in range(0, NUM_PARTICLES):
+            newpot += np.exp(-la.norm(P_t[i]-P_t[j],2)/(0.5*ra)**2)
+        pot.append(newpot)
+        if (newpot > maxpot):
+            maxpot = newpot
+            maxindex = i
+
+    # Define first centroid center c1
+    k = 1
+    ck = P_t[maxindex]
+    potck = pot[maxindex]
+    potlast = 0
+    centroids.append(ck)
+    while (potck > 0.95*potlast):
+        #Update Potential Values
+        newpot = 0
+        maxpot = 0
+        maxindex = 0
+        for i in range(0, NUM_PARTICLES):
+            pot[i] -= potck*np.exp(-la.norm(P_t[i] - ck,2)/(0.75*ra)**2)
+            if (pot[i] > maxpot):
+                maxpot = pot[i]
+                maxindex = i
+        #Calculate kth centroid
+        ck = P_t[maxindex]
+        potlast = potck
+        potck = pot[maxindex]
+        centroids.append(ck)
+        k = k + 1
+
+    return centroids[0:-1]
 
 def path_rmse(state_estimates):
     """ Computes the RMSE error of the distance at each time step from the expected path
@@ -489,6 +531,7 @@ def main():
                                  lat_origin=lat_origin,
                                  lon_origin=lon_origin)
         #plt.axis([-15, 25, -25, 15])
+
         plt.axis([-5, 15, -15, 5])
         plt.plot(pathx,pathy)
         for p in P_prev_t:
@@ -496,6 +539,9 @@ def main():
             y = p[3]
             ax.scatter(x, y, c='r', marker='.')
         plt.scatter(x_gps, y_gps, c='b', marker='.')
+        centroids = subtractive_clustering(P_prev_t)
+        for c in centroids:
+            plt.scatter(c[1],c[3], c='k', marker='.')
         plt.pause(0.00001)
         ax.clear()
 
@@ -519,6 +565,8 @@ def main():
 
         # Correction Step
         P_t = correction_step(P_pred_t, w_tot)
+
+
 
         #  For clarity sake/teaching purposes, we explicitly update t->(t-1)
         P_prev_t = P_t
