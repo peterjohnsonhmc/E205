@@ -17,6 +17,8 @@ import os.path
 import scipy as sp
 from scipy.stats import norm, uniform
 from numpy import linalg as la
+from statistics import stdev
+
 
 HEIGHT_THRESHOLD = 0.0          # meters
 GROUND_HEIGHT_THRESHOLD = -.4      # meters
@@ -24,14 +26,16 @@ dt = 0.1                        # timestep seconds
 X_L = 5.                          # Landmark position in global frame
 Y_L = -5.                          # meters
 EARTH_RADIUS = 6.3781E6          # meters
-NUM_PARTICLES = 300
+NUM_PARTICLES = 500
 # variances
 VAR_AX = 1.8373
 VAR_AY = 1.1991
 VAR_THETA = 0.00058709
-VAR_LIDAR = .01 #0.0075**2 # this is actually range but works for x and y
+VAR_LIDAR = 0.0075**2 # this is actually range but works for x and y
 
 PRINTING = False
+
+global V
 
 
 def load_data(filename):
@@ -182,23 +186,37 @@ def propogate_state(p_i_t, u_t):
     x_bar_t (np.array)   -- the predicted state
     """
     #Destructure array
-    xd, x, yd, y, thetad, theta, thetap, w = p_i_t
+    #xd, x, yd, y, thetad, theta, thetap, w = p_i_t
+    xd, x, yd, y, theta, w = p_i_t
 
     ux, uy, yaw = u_t
-    ux += np.random.normal(0, np.sqrt(VAR_AX))
-    uy += np.random.normal(0, np.sqrt(VAR_AY))
+
+    # print("V: ", V  )
+    Vel = V* np.random.uniform(0.89, 1.1)
+    if (Vel < 0.9*V):
+        Vel = 0 + np.random.normal(0,0.05)
+
+    #V = V + np.random.normal(0, np.sqrt(VAR_AY))
     yaw += np.random.normal(0, np.sqrt(VAR_THETA))
+    Vx = Vel*math.cos(yaw)
+    Vy = Vel*math.sin(yaw)
+    # print("Vx: ", Vx)
+    # print("Vy: ", Vy)
 
-    p_pred_t = np.array([xd + (ux*math.cos(yaw) - uy*math.sin(yaw))* dt,
-                        x  +  xd*dt,
-                        yd + (ux*math.sin(yaw) + uy*math.cos(yaw))* dt,
-                        y  +  yd*dt,
-                        wrap_to_pi(theta - thetap)/dt,
-                        yaw,
-                        theta,
-                        w], dtype = np.double)
-
-
+    # p_pred_t = np.array([[xd + (ux*math.cos(yaw) - uy*math.sin(yaw))* dt],
+    #                      [x  +  xd*dt],
+    #                      [yd + (ux*math.sin(yaw) + uy*math.cos(yaw))* dt],
+    #                      [y  +  yd*dt],
+    #                      [wrap_to_pi(theta - thetap)/dt],
+    #                      [yaw],
+    #                      [theta],
+    #                     w], dtype = np.double)
+    p_pred_t = np.array([[Vx],
+                         [x  +  Vx*dt],
+                         [Vy],
+                         [y  +  Vy*dt],
+                         [yaw],
+                         [w]], dtype = np.double)
     #print("x_bar_t: ", x_bar_t.shape)
 
     return p_pred_t
@@ -213,7 +231,8 @@ def calc_meas_prediction(p_i_t):
         z_bar_t (np.array)  -- the predicted measurement
     """
 
-    xd, x, yd, y, thetad, theta, thetap, w = p_i_t
+    #xd, x, yd, y, thetad, theta, thetap, w = p_i_t
+    xd, x, yd, y, theta, w = p_i_t
 
     z_bar_t = np.array([X_L-x,
                         Y_L-y],
@@ -229,22 +248,24 @@ def longpdf(mu, var, x):
     exponent = sp.longdouble(-0.5*((x-mu)**2)/var)
     return sp.longdouble(const*np.exp(exponent))
 
-def find_weight(p_i_t, z_t, u_t):
+def find_weight(p_i_t, z_t, u_t, var_lidar, var_theta):
     z_x, z_y = z_t
     _, _, u_theta = u_t
 
     z_bar_x, z_bar_y = calc_meas_prediction(p_i_t)
-    _, _, _, _, _, theta, _, _ = p_i_t
+    #_, _, _, _, _, theta, _, _ = p_i_t
+    xd, x, yd, y, theta, w = p_i_t
+
     if (PRINTING):
         print("z_x: ", z_x)
         print("z_y: ", z_y)
         print("z_bar_x: ", z_bar_x)
         print("z_bar_y: ", z_bar_y)
 
-    pdf_val = longpdf(z_bar_x, VAR_LIDAR, z_x)
+    pdf_val = longpdf(z_bar_x, var_lidar, z_x)
     w_xt = sp.longdouble(pdf_val)
 
-    pdf_val = longpdf(z_bar_y, VAR_LIDAR, z_y)
+    pdf_val = longpdf(z_bar_y, var_lidar, z_y)
     w_yt = sp.longdouble(pdf_val)
 
     pdf_val = longpdf(u_theta, VAR_THETA, theta)
@@ -273,7 +294,8 @@ def local_to_global(p_i_t, z_t):
        Returns:
        z_global (np.array) -- global orientation measurment vector
     """
-    xd, x, yd, y, thetad, theta, thetap, w = p_i_t
+    #xd, x, yd, y, thetad, theta, thetap, w = p_i_t
+    xd, x, yd, y, theta, w = p_i_t
     zx, zy = z_t
     w_theta = wrap_to_pi(-theta+math.pi/2)
 
@@ -299,6 +321,8 @@ def prediction_step(P_prev, u_t, z_t):
 
     P_pred = []
     w_tot = 0
+    var_lidar = VAR_LIDAR
+    var_theta = VAR_THETA
     # for loop over all of the previous particles
     for p_prev in P_prev:
         # find new state given previous particle, odometry + randomness (motion model)
@@ -306,13 +330,24 @@ def prediction_step(P_prev, u_t, z_t):
         # Globalize the measurment for each particle
         z_g_t = local_to_global(p_pred, z_t)
         # find particle's weight using wt = P(zt | xt)
-        w_t = find_weight(p_pred, z_g_t, u_t)
+        w_t = find_weight(p_pred, z_g_t, u_t, var_lidar, var_theta)
         w_tot += w_t
         # add new particle to the current belief
-        p_pred[7] = w_t
-        p_pred.reshape((8,))
+        p_pred[5] = w_t
+        p_pred.reshape((6,))
         P_pred.append(p_pred)
 
+    while (w_tot <= NUM_PARTICLES*10e-20):
+        w_tot = 0
+        var_lidar *= 100
+        var_theta *= 100
+        for i in range(0, NUM_PARTICLES):
+            p_pred = P_pred[i]
+            z_g_t = local_to_global(p_pred, z_t)
+            w_t = find_weight(p_pred, z_g_t, u_t, var_lidar, var_theta)
+            w_tot += w_t
+            p_pred[5] = w_t
+            P_pred[i] = p_pred
 
     return [P_pred, w_tot]
 
@@ -331,12 +366,12 @@ def correction_step(P_pred, w_tot):
     if (PRINTING):
         print("RESAMPLING")
         for p in P_pred:
-            print("x: ", p[1], "   y: ", p[3], "   weight: ", p[7])
+            print("x: ", p[1], "   y: ", p[3], "   weight: ", p[5])
 
     P_corr = []
 
     p0 = P_pred[0]
-    w0 = p0[7].copy()
+    w0 = p0[5].copy()
     # resampling algorithm
     for p in P_pred:
         r = np.random.uniform(0, 1)*w_tot
@@ -347,11 +382,11 @@ def correction_step(P_pred, w_tot):
             if (j == NUM_PARTICLES-1):
                 break
             p_j = P_pred[j]
-            w_j = p_j[7].copy()
+            w_j = p_j[5].copy()
             wsum += w_j
 
         p_c = P_pred[j]
-        p_c.reshape((8,))
+        p_c.reshape((6,))
         #print(p_c)
         P_corr.append(p_c)
 
@@ -463,12 +498,23 @@ def path_rmse(state_estimates):
 
     return rmse, residuals, mean_error, rmse_time
 
+def find_sigma(data_set):
+    """Finds the standard deviation, sigma, of a 1D data_set
 
+    Parameters:
+    data_set (list)    -- data set to find the sigma of
+
+    Returns:
+    sigma (float)      -- the standard deviation of data_set
+    """
+    mu = np.mean(data_set)
+    sigma = stdev(data_set, mu)
+    return sigma
 
 def main():
     """Run a EKF on logged data from IMU and LiDAR moving in a box formation around a landmark"""
 
-    np.random.seed(10)
+    #np.random.seed(10)
 
     filepath = ""
     filename =  "2020_2_26__16_59_7" #"2020_2_26__17_21_59"
@@ -492,28 +538,45 @@ def main():
     x_ddot = data["AccelX"]
     y_ddot = data["AccelY"]
 
+    VAR_AX = find_sigma(x_ddot[0:79])**2
+    VAR_AY = find_sigma(y_ddot[0:79])**2
+    # print(VAR_AX)
+    # print(VAR_AY)
+
     lat_origin = lat_gps[0]
     lon_origin = lon_gps[0]
 
+    #Compute avg velocity for use
+    global V
+    V = 4*10/(len(time_stamps)*dt)
+    print("V: ", V)
+
+
     #  Initialize filter
-    N = 8 # number of states
+    N = 6 # number of states
     #Start in NW corner
     P_prev_t = []
     for i in range(0,NUM_PARTICLES):
         randx = np.random.uniform(-5,15)
         randy = np.random.uniform(-15,5)
         randtheta = np.random.uniform(-math.pi,math.pi)
-        #p = np.array([0, randx, 0, randy, 0, randtheta, 0, 1/NUM_PARTICLES], dtype = np.double) # initialize particles to all have the same weight
-        p = np.array([0, 0, 0, 0, 0, 0, 0, 1/NUM_PARTICLES], dtype = np.double) # known start
-        p.reshape((8,))
+        p = np.array([0, randx, 0, randy, randtheta, 1/NUM_PARTICLES], dtype = np.double)
+        #p = np.array([0, randx, 0, randy, 0, 0, 0, 1/NUM_PARTICLES], dtype = np.double) # initialize particles to all have the same weight
+        #p = np.array([0, 0, 0, 0, 0, 0, 0, 1/NUM_PARTICLES], dtype = np.double) # known start
+        p.reshape((6,))
         P_prev_t.append(p)
 
     #allocate
     gps_estimates = np.empty((2, len(time_stamps)))
+    centroids_logged = []
 
     #Expected path
     pathx = [0,10,10,0,0]
     pathy = [0,0,-10,-10,0]
+
+    plt.figure(0)
+    plt.scatter(time_stamps, yaw_lidar)
+    plt.show()
 
     #Initialize animated plot
     plt.figure(1)
@@ -531,7 +594,6 @@ def main():
                                  lat_origin=lat_origin,
                                  lon_origin=lon_origin)
         #plt.axis([-15, 25, -25, 15])
-
         plt.axis([-5, 15, -15, 5])
         plt.plot(pathx,pathy)
         for p in P_prev_t:
@@ -539,16 +601,20 @@ def main():
             y = p[3]
             ax.scatter(x, y, c='r', marker='.')
         plt.scatter(x_gps, y_gps, c='b', marker='.')
-        centroids = subtractive_clustering(P_prev_t)
-        for c in centroids:
-            plt.scatter(c[1],c[3], c='k', marker='.')
+        # centroids = subtractive_clustering(P_prev_t)
+        # for c in centroids:
+        #     plt.scatter(c[1],c[3], c='k', marker='.')
+        # centroids_logged.append(centroids[0])
+        # for c in centroids_logged:
+        #     plt.scatter(c[1],c[3], c='k', marker='*')
+        gps_estimates[:, t] = np.array([x_gps, y_gps])
         plt.pause(0.00001)
         ax.clear()
 
         if (PRINTING):
             print("Time Step: %d", t)
             for p in P_prev_t:
-                print("x: ", p[1], "   y: ", p[3], "   weight: ", p[7])
+                print("x: ", p[1], "   y: ", p[3], "   weight: ", p[5])
 
         # Get control input
         u_t = np.array([x_ddot[t],
@@ -566,14 +632,13 @@ def main():
         # Correction Step
         P_t = correction_step(P_pred_t, w_tot)
 
-
-
         #  For clarity sake/teaching purposes, we explicitly update t->(t-1)
         P_prev_t = P_t
 
-
-    plt.show()
-
+    # plt.plot(pathx,pathy)
+    # for c in centroids_logged:
+    #     plt.scatter(c[1],c[3], c='k', marker='.')
+    # plt.show()
 
     print("Done plotting, exiting")
     return 0
