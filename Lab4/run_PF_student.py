@@ -26,7 +26,7 @@ dt = 0.1                        # timestep seconds
 X_L = 5.                          # Landmark position in global frame
 Y_L = -5.                          # meters
 EARTH_RADIUS = 6.3781E6          # meters
-NUM_PARTICLES = 500
+NUM_PARTICLES = 3000
 # variances
 VAR_AX = 1.8373
 VAR_AY = 1.1991
@@ -415,25 +415,26 @@ def subtractive_clustering(P_t):
     # Define first centroid center c1
     k = 1
     ck = P_t[maxindex]
+    return ck
     potck = pot[maxindex]
     potlast = 0
     centroids.append(ck)
-    while (potck > 0.95*potlast):
-        #Update Potential Values
-        newpot = 0
-        maxpot = 0
-        maxindex = 0
-        for i in range(0, NUM_PARTICLES):
-            pot[i] -= potck*np.exp(-la.norm(P_t[i] - ck,2)/(0.75*ra)**2)
-            if (pot[i] > maxpot):
-                maxpot = pot[i]
-                maxindex = i
-        #Calculate kth centroid
-        ck = P_t[maxindex]
-        potlast = potck
-        potck = pot[maxindex]
-        centroids.append(ck)
-        k = k + 1
+    # while (potck > 0.95*potlast):
+    #     #Update Potential Values
+    #     newpot = 0
+    #     maxpot = 0
+    #     maxindex = 0
+    #     for i in range(0, NUM_PARTICLES):
+    #         pot[i] -= potck*np.exp(-la.norm(P_t[i] - ck,2)/(0.75*ra)**2)
+    #         if (pot[i] > maxpot):
+    #             maxpot = pot[i]
+    #             maxindex = i
+    #     #Calculate kth centroid
+    #     ck = P_t[maxindex]
+    #     potlast = potck
+    #     potck = pot[maxindex]
+    #     centroids.append(ck)
+    #     k = k + 1
 
     return centroids[0:-1]
 
@@ -568,20 +569,16 @@ def main():
 
     #allocate
     gps_estimates = np.empty((2, len(time_stamps)))
-    centroids_logged = []
+    centroids_logged = np.empty((6, len(time_stamps)))
 
     #Expected path
     pathx = [0,10,10,0,0]
     pathy = [0,0,-10,-10,0]
 
-    plt.figure(0)
-    plt.scatter(time_stamps, yaw_lidar)
-    plt.show()
-
     #Initialize animated plot
     plt.figure(1)
     fig, ax = plt.subplots(subplot_kw={'aspect': 'equal'})
-    plt.axis([-5, 15, -15, 5])
+    plt.axis([-5, 15, -17, 3])
     ax.set_ylabel("Y position (Global Frame, m)")
     ax.set_xlabel("X position (Global Frame, m)")
     ax.legend(["Expected Path", "Estimated Position", "GPS Position"], loc='center right')
@@ -594,22 +591,26 @@ def main():
                                  lat_origin=lat_origin,
                                  lon_origin=lon_origin)
         #plt.axis([-15, 25, -25, 15])
-        plt.axis([-5, 15, -15, 5])
-        plt.plot(pathx,pathy)
-        for p in P_prev_t:
-            x = p[1]
-            y = p[3]
-            ax.scatter(x, y, c='r', marker='.')
-        plt.scatter(x_gps, y_gps, c='b', marker='.')
-        # centroids = subtractive_clustering(P_prev_t)
+        # plt.axis([-5, 15, -15, 5])
+
+        # plt.scatter(x_gps, y_gps, c='b', marker='.')
+        centroids = subtractive_clustering(P_prev_t)
+        centroids = centroids.reshape((6,))
         # for c in centroids:
         #     plt.scatter(c[1],c[3], c='k', marker='.')
-        # centroids_logged.append(centroids[0])
+        centroids_logged[:,t] = centroids
+        if (t % 50 == 1):
+            for p in P_prev_t:
+                x = p[1]
+                y = p[3]
+                ax.scatter(x, y, c='r', marker='.')
         # for c in centroids_logged:
         #     plt.scatter(c[1],c[3], c='k', marker='*')
-        gps_estimates[:, t] = np.array([x_gps, y_gps])
-        plt.pause(0.00001)
-        ax.clear()
+        # gps_estimates[:, t] = np.array([x_gps, y_gps])
+        # plt.pause(0.00001)
+        # ax.clear()
+        gps_estimates[:,t] = np.array([x_gps, y_gps])
+
 
         if (PRINTING):
             print("Time Step: %d", t)
@@ -635,10 +636,24 @@ def main():
         #  For clarity sake/teaching purposes, we explicitly update t->(t-1)
         P_prev_t = P_t
 
-    # plt.plot(pathx,pathy)
-    # for c in centroids_logged:
-    #     plt.scatter(c[1],c[3], c='k', marker='.')
-    # plt.show()
+
+    plt.scatter(gps_estimates[0][:], gps_estimates[1][:], marker='.')
+    plt.plot(centroids_logged[1][:],centroids_logged[3][:], c='k', linestyle='--')
+    plt.plot(pathx, pathy)
+    plt.legend([ "PF Estimate", "Expected Path", "Particles", "GPS Measurements"], loc="lower center", ncol=2)
+    plt.xlabel("Global X (m)")
+    plt.ylabel("Global Y (m)")
+    plt.show()
+
+    with open('names.csv', 'w', newline='') as csvfile:
+        fieldnames = ['times', 'xd', 'x', 'yd', 'y', 'theta', 'w']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+        writer.writeheader()
+        for t, _ in enumerate(time_stamps):
+            writer.writerow({'times': time_stamps[t], 'xd': centroids_logged[0][t], \
+             'x': centroids_logged[1][t], 'yd': centroids_logged[2][t], 'y': centroids_logged[3][t], \
+             'theta': centroids_logged[4][t], 'w': centroids_logged[5][t]})
 
     print("Done plotting, exiting")
     return 0
