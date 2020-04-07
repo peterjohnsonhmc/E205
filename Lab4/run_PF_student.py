@@ -26,7 +26,7 @@ dt = 0.1                        # timestep seconds
 X_L = 5.                          # Landmark position in global frame
 Y_L = -5.                          # meters
 EARTH_RADIUS = 6.3781E6          # meters
-NUM_PARTICLES = 3000
+NUM_PARTICLES = 1000
 # variances
 VAR_AX = 1.8373
 VAR_AY = 1.1991
@@ -276,11 +276,11 @@ def find_weight(p_i_t, z_t, u_t, var_lidar, var_theta):
         print("w_xt: ", w_xt)
 
     if (w_yt == 0.0):
-        w_yt = 10e-20
+        w_yt = 10e-80
     if (w_xt == 0.0):
-        w_xt = 10e-20
+        w_xt = 10e-80
     if (w_theta == 0.0):
-        w_theta = 10e-20
+        w_theta = 10e-80
 
     return sp.longdouble(w_xt*w_yt*w_theta)
 
@@ -396,6 +396,15 @@ def correction_step(P_pred, w_tot):
 def distance(x1,y1,x2,y2):
      dist = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
      return dist
+
+def simple_clustering(P_t):
+    highest_weight = 0;
+    best_particle = P_t[0];
+    for p in P_t:
+        if p[5] > highest_weight:
+            highest_weight = p[5]
+            best_particle = p
+    return best_particle
 
 def subtractive_clustering(P_t):
     ra = 3*np.sqrt(VAR_LIDAR) # neighborhood radius based on 99% confidence, which is 3 stdev
@@ -515,7 +524,7 @@ def find_sigma(data_set):
 def main():
     """Run a EKF on logged data from IMU and LiDAR moving in a box formation around a landmark"""
 
-    #np.random.seed(10)
+    np.random.seed(28)
 
     filepath = ""
     filename =  "2020_2_26__16_59_7" #"2020_2_26__17_21_59"
@@ -586,6 +595,7 @@ def main():
 
     #  Run filter over data
     for t, _ in enumerate(time_stamps):
+        print(t)
         x_gps, y_gps = convert_gps_to_xy(lat_gps=lat_gps[t],
                                  lon_gps=lon_gps[t],
                                  lat_origin=lat_origin,
@@ -594,7 +604,7 @@ def main():
         # plt.axis([-5, 15, -15, 5])
 
         # plt.scatter(x_gps, y_gps, c='b', marker='.')
-        centroids = subtractive_clustering(P_prev_t)
+        centroids = simple_clustering(P_prev_t)
         centroids = centroids.reshape((6,))
         # for c in centroids:
         #     plt.scatter(c[1],c[3], c='k', marker='.')
@@ -611,11 +621,9 @@ def main():
         # ax.clear()
         gps_estimates[:,t] = np.array([x_gps, y_gps])
 
-
         if (PRINTING):
             print("Time Step: %d", t)
-            for p in P_prev_t:
-                print("x: ", p[1], "   y: ", p[3], "   weight: ", p[5])
+            print("x: ", centroids[1], "   y: ", centroids[3], "   theta: ", centroids[4])
 
         # Get control input
         u_t = np.array([x_ddot[t],
@@ -645,7 +653,7 @@ def main():
     plt.ylabel("Global Y (m)")
     plt.show()
 
-    with open('names.csv', 'w', newline='') as csvfile:
+    with open('1000particles2.csv', 'w', newline='') as csvfile:
         fieldnames = ['times', 'xd', 'x', 'yd', 'y', 'theta', 'w']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
