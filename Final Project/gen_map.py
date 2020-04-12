@@ -12,6 +12,8 @@ np_map = np.array(map)
 np_scale = np.array(scale)
 
 rows, cols, _ = np_map.shape
+print(rows)
+print(cols)
 
 pixel_map = np.empty([rows, cols,], dtype = int)
 for row in range(0,rows):

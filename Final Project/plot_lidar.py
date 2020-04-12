@@ -3,17 +3,21 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 # Load data
-f = open("data/01M/01M_lidar.dat", 'r')
+movement = "26M"
+open_path = "data/" + movement + "/" + movement + "_"
+f = open(open_path + "lidar.dat", 'r')
 
 fig = plt.figure(1)
 ax = fig.add_subplot(111, projection = '3d')
-ax.set_xlim([-5, 5])
-ax.set_ylim([-5, 5])
+ax.set_xlim([-10, 0])
+ax.set_ylim([-10, 10])
 ax.set_zlim([-5, 5])
 
 
 f.readline()
 timePrev = 0
+for _ in range(2000000):
+    next(f)
 for line in f:
     time, x, y, z, i =line.split()
     time = float(time)
@@ -24,14 +28,15 @@ for line in f:
     if time != timePrev:
         ax.clear()
 
-    ax.scatter(x,y,z)
-    ax.set_xlim([-5, 5])
-    ax.set_ylim([-5, 5])
-    ax.set_zlim([-5, 5])
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_zlabel("Z")
-    plt.pause(0.0005)
+    if (x <= 0):
+        ax.scatter(x,y,z)
+        ax.set_xlim([-10, 0])
+        ax.set_ylim([-10, 10])
+        ax.set_zlim([-5, 5])
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        ax.set_zlabel("Z")
+        plt.pause(0.0005)
 
     timePrev = time
 
