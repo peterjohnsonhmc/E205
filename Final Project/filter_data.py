@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+from statistics import stdev
 import csv
 import math
 
@@ -91,11 +92,60 @@ def filter_lidar_encoder(movement):
             y = float(y)
             z = float(z)
 
-            if (z <= 0.5 and z > -0.5):
+            if (z <= 0.15 and z > -0.15):
                 time = time - startingtime
                 theta = math.atan2(-x,y)
                 range = math.sqrt(x**2 + y**2)
                 writer.writerow({'times': time, 'theta': theta, 'range': range})
+
+    # Load data
+    f = open(save_path + "lidar_filtered.csv", 'r')
+    # get rid of header
+    f.readline()
+
+    with open(save_path + "lidar_gauss.csv", 'w', newline='') as csvfile:
+        fieldnames = ['times', 'theta_mu', 'theta_var', 'range_mu', 'range_var']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+
+        line = f.readline()
+        print(line)
+        time, theta, range = line.split(',')
+        time = float(time)
+        theta = float(theta)
+        range = float(range)
+        current_time = time
+        theta_list = []
+        range_list = []
+        theta_list.append(theta)
+        range_list.append(range)
+
+        for line in f:
+            time, theta, range = line.split(',')
+            time = float(time)
+            theta = float(theta)
+            range = float(range)
+            if time < current_time+0.095:
+                theta_list.append(theta)
+                range_list.append(range)
+            else:
+                # calculate mu and standard deviation
+                theta_mu = np.mean(theta_list)
+                range_mu = np.mean(range_list)
+                if (len(theta_list) ==1):
+                    theta_var = 0
+                else:
+                    theta_var = (stdev(theta_list, theta_mu))**2
+                if (len(range_list)==1):
+                    range_var = 0
+                else:
+                    range_var = (stdev(range_list, range_mu))**2
+                writer.writerow({'times': current_time, 'theta_mu': theta_mu, 'theta_var': theta_var, 'range_mu': range_mu, 'range_var': range_var})
+                theta_list = []
+                range_list = []
+                current_time = time
+                theta_list.append(theta)
+                range_list.append(range)
 
     return 0
 
