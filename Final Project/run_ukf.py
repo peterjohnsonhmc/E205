@@ -20,6 +20,7 @@ from numpy import linalg as la
 from statistics import stdev
 from PIL import Image
 
+
 L = 0.545 #m distance between center of Left and right wheels
 N = 3
 alpha = .01
@@ -37,6 +38,9 @@ R_t = np.array([[0.00435**2,0,0], [0,0.00435**2,0], [0,0,(0.0000435/L)**2]])
 global MAP
 global plottingMAP
 global im2
+
+#NUmber of beams per time step
+NUM_BEAMS = 7
 
 def load_data(filename):
     """Load data from the csv log
@@ -120,7 +124,7 @@ def propagate_state(x_t_prev, u_t):
                          [y + delta_d*math.sin(theta+delta_theta/2)],
                          [wrap_to_pi(theta + delta_theta)]], dtype = np.float64)
 
-    return x_t_pred.reshape((3,))
+    return x_t_pred.reshape((N,))
 
 def calc_prop_jacobian_x(x_t_prev, u_t):
 
@@ -165,46 +169,51 @@ def distance(x1, y1, x2, y2):
     return dist
 
 
-def calc_expected_meas(x_t_pred, azimuth):
+def calc_expected_meas(x_t_pred, azimuth_t):
     print("Sigma point: ", x_t_pred)
     x, y, theta = x_t_pred
-    row_curr, col_curr = xy_to_grid(x, y)
-    # convert from lidar frame to global frame
-    azimuth = wrap_to_pi(theta + azimuth)
-    print("Azimuth :", azimuth)
-    m = math.tan(azimuth)
-    x_curr = x
-    y_curr = y
-    if (abs(m) > 1):
-        m = 1/m # in the case that we flip x and y
-        flipped_azimuth = -(azimuth-math.pi/2)
-        # because of how y is indexed, we want to decrease the col to move up
-        # and increase the col to move down
-        if (flipped_azimuth > math.pi/2 or flipped_azimuth < -math.pi/2):
-            increment = 1
-        else:
-            increment = -1
-        while (sum(MAP[col_curr,row_curr]) < 300):
-            row_curr = row_curr+increment
-            x_curr, y_curr = grid_to_xy(row_curr, col_curr)
-            x_curr = m*y_curr + x
-            _, col_curr = xy_to_grid(x_curr, y_curr)
-            plot_1_pixel(plottingMAP, x_curr, y_curr, (200,0,0,255))
-    else:
-        if (azimuth > math.pi/2 or azimuth < -math.pi/2):
-            increment = -1
-        else:
-            increment = 1
-        while (sum(MAP[col_curr,row_curr]) < 300):
-            col_curr = col_curr+increment
-            x_curr, y_curr = grid_to_xy(row_curr, col_curr)
-            #print(x_curr,y_curr)
-            y_curr = m*x_curr + y
-            row_curr, _ = xy_to_grid(x_curr, y_curr)
-            plot_1_pixel(plottingMAP, x_curr, y_curr, (200,0,0,255))
-            #print(col_curr, row_curr)
+    z_t_pred = np.zeros((NUM_BEAMS, 1))
 
-    z_t_pred = distance(x, y, x_curr, y_curr)
+    for i in range(NUM_BEAMS):
+
+        azimuth = azimuth_t[i]
+        # convert from lidar frame to global frame
+        azimuth = wrap_to_pi(theta + azimuth)
+        print("Azimuth :", azimuth)
+        m = math.tan(azimuth)
+        x_curr = x
+        y_curr = y
+        row_curr, col_curr = xy_to_grid(x, y)
+        if (abs(m) > 1):
+            m = 1/m # in the case that we flip x and y
+            flipped_azimuth = -(azimuth-math.pi/2)
+            # because of how y is indexed, we want to decrease the col to move up
+            # and increase the col to move down
+            if (flipped_azimuth > math.pi/2 or flipped_azimuth < -math.pi/2):
+                increment = 1
+            else:
+                increment = -1
+            while (sum(MAP[col_curr,row_curr]) < 300):
+                row_curr = row_curr+increment
+                x_curr, y_curr = grid_to_xy(row_curr, col_curr)
+                x_curr = m*y_curr + x
+                _, col_curr = xy_to_grid(x_curr, y_curr)
+                plot_1_pixel(plottingMAP, x_curr, y_curr, (200,0,0,255))
+        else:
+            if (azimuth > math.pi/2 or azimuth < -math.pi/2):
+                increment = -1
+            else:
+                increment = 1
+            while (sum(MAP[col_curr,row_curr]) < 300):
+                col_curr = col_curr+increment
+                x_curr, y_curr = grid_to_xy(row_curr, col_curr)
+                #print(x_curr,y_curr)
+                y_curr = m*x_curr + y
+                row_curr, _ = xy_to_grid(x_curr, y_curr)
+                plot_1_pixel(plottingMAP, x_curr, y_curr, (200,0,0,255))
+                #print(col_curr, row_curr)
+
+        z_t_pred[i] = distance(x, y, x_curr, y_curr)
     print("range_pred: ", z_t_pred)
     return z_t_pred
 
@@ -254,7 +263,7 @@ def get_chi(x, sigma):
 
     chi = np.empty([N,2*N+1], dtype=np.float64)
     # fill in x
-    x = x.reshape((3,))
+    x = x.reshape((N,))
     # chi[:,0] = x
     # # fill in next N sigma points
     # print("sigma_t_prev: ", sigma)
@@ -291,7 +300,6 @@ def prediction_step(x_t_prev, sigma_t_prev, u_t):
     print("x_t_prev: ", x_t_prev)
 
     chi_t_prev = get_chi(x_t_prev, sigma_t_prev)
-    print("chi_prev: ", chi_t_prev)
     # prediction step
     chi_t_prop = np.empty([N,2*N+1], dtype=np.float64)
     for i in range(0,2*N+1):
@@ -319,13 +327,14 @@ def prediction_step(x_t_prev, sigma_t_prev, u_t):
     sigma_t_pred[2,1] = min(wrap_to_pi_sq(sigma_t_pred[2,1]), 0.175**2)
     sigma_t_pred[2,2] = min(wrap_to_pi_sq(sigma_t_pred[2,2]), 0.175**2)
 
-
+    x_t_pred = x_t_pred.reshape((3,1))
     return x_t_pred, sigma_t_pred
 
 
-def correction_step(x_t_pred, sigma_t_pred, z_t, Q_t):
+def correction_step(x_t_pred, sigma_t_pred, z_t, azimuth_t, Q_t):
 
     #print("range: ", z_t[0])
+    #z_t = z_t.reshape((NUM_BEAMS,1))
 
     # get the predicted chi from the predicted sigma and x
     chi_t_pred = get_chi(x_t_pred, sigma_t_pred)
@@ -333,49 +342,50 @@ def correction_step(x_t_pred, sigma_t_pred, z_t, Q_t):
 
 
     # get the matrix of predicted measurements
-    Z_t_pred = np.empty([1,2*N+1,], dtype=np.float64)
+    Z_t_pred = np.empty((NUM_BEAMS,2*N+1), dtype=np.float64)
+
     for i in range(0, 2*N+1):
-        Z_t_pred[:,i] = calc_expected_meas(chi_t_pred[:,i], z_t[1])
+        Z_t_pred[:,i] = calc_expected_meas(chi_t_pred[:,i], azimuth_t).reshape((NUM_BEAMS,))
 
     # consolidate into one predicted measurements
     z_t_pred = (lamda/(lamda+N))*Z_t_pred[:,0]
     w_m_i = 1/(2*(N+lamda))
     for i in range(1, 2*N+1):
         z_t_pred = z_t_pred + w_m_i*Z_t_pred[:,i]
-
-    print("z_t_pred: ", z_t_pred)
+    z_t_pred = z_t_pred.reshape((NUM_BEAMS,1))
 
     # Update S
-    col = Z_t_pred[:,0] - z_t_pred
+    col = (Z_t_pred[:,0].reshape((NUM_BEAMS,1)) - z_t_pred) #.reshape((NUM_BEAMS,1))
     S_t =  (lamda/(N+lamda) + (1-alpha**2+beta))*col.dot(np.transpose(col))
     for i in range(1, 2*N+1):
         w_c_i = 1/(2*(N+lamda))
-        col = Z_t_pred[:,i] - z_t_pred
+        col = Z_t_pred[:,i].reshape((NUM_BEAMS, 1)) - z_t_pred
         S_t += w_c_i*col.dot(np.transpose(col))
     S_t += Q_t
 
+
     # Calculate sigma_x_z_t
-    col_chi = (chi_t_pred[:,0] - x_t_pred).reshape((3,1))
-    col_z = (Z_t_pred[:,0] - z_t_pred).reshape((1,1))
-    sigma_x_z_t =  (lamda/(N+lamda) + (1-alpha**2+beta))*col_chi*col_z
+    col_chi = (chi_t_pred[:,0].reshape((N,1)) - x_t_pred).reshape((N,1))
+    col_z = (Z_t_pred[:,0].reshape((NUM_BEAMS,1)) - z_t_pred).reshape((NUM_BEAMS,1))
+    sigma_x_z_t =  (lamda/(N+lamda) + (1-alpha**2+beta))*col_chi.dot(col_z.T)
     for i in range(1, 2*N+1):
         w_c_i = 1/(2*(N+lamda))
-        col_chi = (chi_t_pred[:,i] - x_t_pred).reshape((3,1))
-        col_z = (Z_t_pred[:,i] - z_t_pred).reshape((1,1))
-        sigma_x_z_t += w_c_i*col_chi*col_z
+        col_chi = (chi_t_pred[:,i].reshape((N,1)) - x_t_pred).reshape((N,1))
+        col_z = (Z_t_pred[:,i].reshape((NUM_BEAMS,1)) - z_t_pred).reshape((NUM_BEAMS,1))
+        sigma_x_z_t += w_c_i*col_chi.dot(col_z.T)
 
     # Calculate Kalman gain
-    K_t = sigma_x_z_t/S_t
-    print("K_t: ", K_t)
+    K_t = sigma_x_z_t.dot(np.linalg.inv(S_t))
     # Update estimate of mu
-    residual = z_t[0] - z_t_pred
-    percent_off = 100*(z_t[0] - z_t_pred)/z_t[0]
+    residual = (z_t - z_t_pred).reshape((NUM_BEAMS,1))
+    print("Residual: ", residual)
+    percent_off = 100*np.min(residual)/np.mean(z_t)
     print("percent_off: ", percent_off, "%")
-    print("Residual: ", z_t[0] - z_t_pred)
+    print("Residual: ", z_t - z_t_pred)
     if abs(percent_off) > 30:
         x_t_est = x_t_pred
     else:
-        x_t_est = x_t_pred + K_t.dot(z_t[0] - z_t_pred)
+        x_t_est = x_t_pred.reshape((N,1)) + K_t.dot(residual)
     # Update sigma_t_est
     #print("delta_sigma:", K_t.dot(S_t).dot(np.transpose(K_t)))
     sigma_t_est = sigma_t_pred - K_t.dot(S_t).dot(np.transpose(K_t))
@@ -422,7 +432,7 @@ def main():
     filename =  "01M_encoder_filtered" #"2020_2_26__17_21_59"
     encoder_data = load_data(filepath + filename)
 
-    filename =  "01M_lidar_gauss" #"2020_2_26__17_21_59"
+    filename =  "01M_lidar_multi_" + str(NUM_BEAMS) #"2020_2_26__17_21_59"
     lidar_data = load_data(filepath + filename)
 
     u_l = encoder_data["left"]
@@ -480,21 +490,29 @@ def main():
         # print("u_t: ", u_t.shape)
 
         # figure out if we will correct
-        while (z_range_var[lidar_index] >= 1):
-            lidar_index += 1
+        # while (z_range_var[lidar_index] >= 1):
+        #     lidar_index += 1
         if ( lidar_times[lidar_index] > encoder_times[t] and lidar_times[lidar_index] < encoder_times[t+1]+0.9):
             print("Predicting and correcting")
             x_t_pred, sigma_t_pred = prediction_step(x_t_prev, sigma_t_prev, u_t)
             # Get measurement
-            z_t = np.array([[z_range_mu[lidar_index]], [z_azimuth_mu[lidar_index]]], dtype = np.float64)
-            Q_t = z_range_var[lidar_index]
-            # print("z_t: ", z_t.shape)
-            x_t_est, sigma_t_est = correction_step(x_t_pred, sigma_t_pred, z_t, Q_t)
+            z_t = np.zeros((NUM_BEAMS, 1), dtype = np.float64)
+            azimuth_t = np.zeros((NUM_BEAMS, 1), dtype = np.float64)
+            Q_t = np.zeros((NUM_BEAMS, NUM_BEAMS), dtype = np.float64)
 
-            lidar_index += 1
+            for i in range(NUM_BEAMS):
+                z_t[i] = z_range_mu[lidar_index+i]
+                azimuth_t[i] = z_azimuth_mu[lidar_index+i]
+                Q_t[i,i] = z_range_var[lidar_index+i]
+
+            # print("z_t: ", z_t.shape)
+            x_t_est, sigma_t_est = correction_step(x_t_pred, sigma_t_pred, z_t, azimuth_t, Q_t)
+
+            lidar_index += NUM_BEAMS
 
             #plt.subplot(2,1,1)
-            plt.scatter(x_t_est[0], x_t_est[1], s=10, marker='.', color='b')
+            plt.scatter(x_t_pred[0], x_t_pred[1], s=5, marker='.', color='r')
+            plt.scatter(x_t_est[0], x_t_est[1], s=5, marker='.', color='b')
             plt.xlim([low_x,int(high_x/5)])
             plt.ylim([high_y, low_y])
 
@@ -504,7 +522,7 @@ def main():
             # plt.xlim([55, 75])
             # plt.ylim([-math.pi, math.pi])
             #
-            plt.pause(0.0005)
+            plt.pause(0.0001)
 
 
         else:
@@ -522,7 +540,7 @@ def main():
             sigma_t_est = R_t
 
 
-        state_estimates[:, t] = x_t_est
+        state_estimates[:, t] = x_t_est.reshape((N,))
         x_t_prev = x_t_est
         sigma_t_prev = sigma_t_est
 
