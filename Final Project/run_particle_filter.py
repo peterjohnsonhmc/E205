@@ -3,7 +3,7 @@ Author: Peter Johnson and Pinky King
 Email: pjohnson@g.hmc.edu, pking@g.hmc.edu
 Date of Creation: 3/30/20
 Description:
-    Particle Filter implementation to filtering localization estimate
+    Particle Filter implementation for localization of a robot in an underground mine
     This code is for teaching purposes for HMC ENGR205 System Simulation Final Project
 """
 
@@ -21,7 +21,7 @@ from statistics import stdev
 from PIL import Image
 
 
-NUM_PARTICLES = 500
+NUM_PARTICLES = 50
 global ax
 L = 0.545 #m distance between center of Left and right wheels
 N = 4 #3 state var + weight
@@ -456,7 +456,6 @@ def simple_clustering(P_t):
 def main():
     """Run a EKF on logged data from IMU and LiDAR moving in a box formation around a landmark"""
 
-    #np.random.seed(28)
     global NUM_BEAMS
     im = Image.open('map.png')
     global MAP
@@ -495,7 +494,7 @@ def main():
 
 
     # Run filter over data
-    lidar_index = 1
+    
 
     plt.figure(0)
     # plt.subplot(2,1,1)
@@ -508,6 +507,8 @@ def main():
     plt.ylim([high_y, low_y])
 
     movements = ["01M", "02M", "03M", "04M", "05M", "06M", "07M", "08M", "09M", "10M", "11M", "12M", "13M", "14M", "15M", "16M"]
+    # movements = ["01M"]
+    time_step_movement =[]
     x_estimates = []
     y_estimates = []
     theta_estimates = []
@@ -518,6 +519,9 @@ def main():
     state_estimates_encoder = []
 
     for movement in movements:
+        
+        print(movement)
+        
         filepath = "filtered_data/" + movement + "/"
         filename =  movement + "_encoder_filtered" #"2020_2_26__17_21_59"
         encoder_data = load_data(filepath + filename)
@@ -542,10 +546,11 @@ def main():
         x_truth = x_vals[i]
         y_truth = y_vals[i]
 
+        lidar_index = 1
 
         for t, _ in enumerate(encoder_times):
 
-            print(encoder_times[t])
+            #print(encoder_times[t])
 
             # Get control input
             u_t = np.array([[u_l[t]], [u_r[t]]], dtype = np.float64)
@@ -561,7 +566,7 @@ def main():
                 plt.xlim([x_t_est[0]-100,x_t_est[0]+100])
                 plt.ylim([high_y, low_y])
 
-                print("Predicting and correcting")
+                #print("Predicting and correcting")
                 # Get measurement
                 z_t = np.zeros((NUM_BEAMS, 1), dtype = np.float64)
                 azimuth_t = np.zeros((NUM_BEAMS, 1), dtype = np.float64)
@@ -586,14 +591,14 @@ def main():
                 # sigma_t_est = R_t
                 # x_t_est[2] = 0
                 #plt.subplot(2,1,1)
-                plt.scatter(x_t_est_simple[0], x_t_est_simple[1], s=5, marker='.', color='b')
+                #plt.scatter(x_t_est_simple[0], x_t_est_simple[1], s=5, marker='.', color='b')
                 #plt.xlim([low_x,int(high_x/5)])
-                plt.xlim([x_t_est[0]-100,x_t_est[0]+100])
+                #plt.xlim([x_t_est[0]-100,x_t_est[0]+100])
 
-                for p in P_est_t:
-                    x = p[0]
-                    y = p[1]
-                    plt.scatter(x, y, c='r', marker='.')
+                # for p in P_est_t:
+                #     x = p[0]
+                #     y = p[1]
+                #     plt.scatter(x, y, c='r', marker='.')
 
                 # plt.subplot(2,1,2)
                 # plt.scatter(encoder_times[t], x_t_est[2], color='b')
@@ -601,13 +606,13 @@ def main():
                 # plt.xlim([55, 75])
                 # plt.ylim([-math.pi, math.pi])
 
-                plt.pause(0.0001)
-                ax.clear()
+                #plt.pause(0.0001)
+                #ax.clear()
                 correcting.append(1)
 
             else:
                 # we can't predict without correcting
-                print("Propagating only")
+                #print("Propagating only")
 
                 P_est_t = list(map(lambda p_i_t: propagate_state(p_i_t, u_t, 0), P_prev_t))
                 x_t_est = subtractive_clustering(P_est_t)
@@ -615,7 +620,7 @@ def main():
 
                 correcting.append(0)
 
-
+            time_step_movement.append(movement)
             x_estimates.append(x_t_est[0])
             y_estimates.append(x_t_est[1])
             theta_estimates.append(x_t_est[2])
@@ -677,14 +682,14 @@ def main():
         plot_pixel(pixelMap,x_vals[i],y_vals[i],(0,200,0,255))
 
     with open('500particles_fullrun.csv', 'w', newline='') as csvfile:
-        fieldnames = ['times', 'xd', 'x', 'yd', 'y', 'theta', 'w']
+        fieldnames = ['times','movement', 'x_sub', 'y_sub', 'theta_sub', 'x_simp', 'y_simp', 'theta_simp', 'correcting']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
         writer.writeheader()
-        for t, _ in enumerate(time_stamps):
-            writer.writerow({'times': encoder_times[t], 'x_sub': state_estimates[0][t], \
-             'y_sub': state_estimates[1][t], 'theta_sub': state_estimates[2][t], 'x_simp': state_estimates_simple[0][t], \
-              'y_simp': state_estimates_simple[1][t], 'theta_simp': state_estimates_simple[2][t], "correcting": correcting[t]})
+        for t, _ in enumerate(encoder_times):
+            writer.writerow({'times': encoder_times[t],'movement': time_step_movement[t], 'x_sub': x_estimates[t], \
+             'y_sub': y_estimates[t], 'theta_sub': theta_estimates[t], 'x_simp': x_estimates_simp[t], \
+              'y_simp': y_estimates_simp[t], 'theta_simp': theta_estimates_simp[t], "correcting": correcting[t]})
 
     print("Done plotting, exiting")
 
