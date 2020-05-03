@@ -47,7 +47,7 @@ def filter_lidar_multiple(movement, num_beams):
 	f.readline()
 
 	with open(path + "lidar_multi_" + str(num_beams)+ ".csv", 'w', newline='') as csvfile:
-		#fieldnames for file we are going to write 
+		#fieldnames for file we are going to write
 		fieldnames = ['times', 'theta_mu', 'theta_var', 'range_mu', 'range_var']
 		writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 		writer.writeheader()
@@ -92,7 +92,7 @@ def filter_lidar_multiple(movement, num_beams):
 						dist_var = 0
 					else:
 						dist_var = (stdev(dist_beam, dist_mu))**2
-					# We will have multiple rows at each timestep, one for each beam 
+					# We will have multiple rows at each timestep, one for each beam
 					writer.writerow({'times': current_time, 'theta_mu': theta_mu, 'theta_var': theta_var, 'range_mu': dist_mu, 'range_var': dist_var})
 
 				current_time = time
@@ -110,40 +110,40 @@ def filter_lidar_encoder(movement):
 
 	open_path = "data/" + movement + "/" + movement + "_"
 	save_path = "filtered_data/" + movement + "/" + movement + "_"
-	# f = open(open_path + "encoder.dat", 'r')
-	# f.readline()
-	#
-	# with open(save_path + "encoder_filtered.csv", 'w', newline='') as csvfile:
-	#     fieldnames = ['times', 'left', 'right']
-	#     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-	#     writer.writeheader()
-	#
-	#     first_read = f.readline()
-	#     time, left, right= first_read.split()
-	#     time = float(time)
-	#     left = float(left)
-	#     right = float(right)
-	#     startingtime = time
-	#
-	#     time = time - startingtime
-	#     writer.writerow({'times': time, 'left': left, 'right': right})
-	#
-	#     left_prev = left
-	#     right_prev = right
-	#
-	#     for line in f:
-	#         time, left, right= line.split()
-	#         time = float(time)
-	#         left = float(left)
-	#         right = float(right)
-	#
-	#         time = time - startingtime
-	#         left_d = left - left_prev
-	#         right_d = right - right_prev
-	#         writer.writerow({'times': time, 'left': left_d, 'right': right_d})
-	#
-	#         left_prev = left
-	#         right_prev = right
+	f = open(open_path + "encoder.dat", 'r')
+	f.readline()
+
+	with open(save_path + "encoder_filtered.csv", 'w', newline='') as csvfile:
+	    fieldnames = ['times', 'left', 'right']
+	    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+	    writer.writeheader()
+
+	    first_read = f.readline()
+	    time, left, right= first_read.split()
+	    time = float(time)
+	    left = float(left)
+	    right = float(right)
+	    startingtime = time
+
+	    time = time - startingtime
+	    writer.writerow({'times': time, 'left': left, 'right': right})
+
+	    left_prev = left
+	    right_prev = right
+
+	    for line in f:
+	        time, left, right= line.split()
+	        time = float(time)
+	        left = float(left)
+	        right = float(right)
+
+	        time = time - startingtime
+	        left_d = left - left_prev
+	        right_d = right - right_prev
+	        writer.writerow({'times': time, 'left': left_d, 'right': right_d})
+
+	        left_prev = left
+	        right_prev = right
 
 	# Load data
 	f = open(open_path + "lidar.dat", 'r')
@@ -162,7 +162,7 @@ def filter_lidar_encoder(movement):
 			z = float(z)
 
 			if (z <= 0.15 and z > -0.15):
-				time = time #- startingtime
+				time = time - startingtime
 				theta = math.atan2(y,x)-math.pi
 				range = math.sqrt(x**2 + y**2)
 				writer.writerow({'times': time, 'theta': theta, 'range': range})
@@ -220,20 +220,25 @@ def filter_lidar_encoder(movement):
 
 
 def main():
-	var = input("Data to be filtered: ")
-	dataset = input("Dataset to be filtered: ")
-	if (var == "multiple lidar"):
-		print("Filtering lidar data to have multiple measurements per time step")
-		num_beams = input("Number of beams per timestep: ")
-		filter_lidar_multiple(dataset, num_beams)
-	elif(var == "lidar" or var == "encoder"):
-		print("Filtering lidar and encoder data")
-		filter_lidar_encoder(dataset)
-	elif(var == "truth"):
-		print("Filtering ground truth")
-		filter_ground_truth()
+    var = input("Data to be filtered: ")
+    dataset = input("Dataset to be filtered: ")
+    if (var == "multiple lidar"):
+        movements = dataset.split()
+        print("Filtering lidar data to have multiple measurements per time step")
+        num_beams = input("Number of beams per timestep: ")
+        for movement in movements:
+            filter_lidar_multiple(movement, num_beams)
+    elif(var == "lidar" or var == "encoder"):
+        movements = dataset.split()
+        print(movements)
+        print("Filtering lidar and encoder data")
+        for movement in movements:
+            filter_lidar_encoder(movement)
+    elif(var == "truth"):
+        print("Filtering ground truth")
+        filter_ground_truth()
 
-	return 0
+    return 0
 
 
 if __name__ == "__main__":
